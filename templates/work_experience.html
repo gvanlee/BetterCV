@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+
+{% block title %}{{ t.work_experience.title }} - {{ t.app_name }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h2>{{ t.work_experience.title }}</h2>
+    <a href="{{ url_for('add_work_experience') }}" class="btn btn-primary">{{ t.buttons.add }} {{ t.work_experience.title }}</a>
+</div>
+
+{% if experiences %}
+<div class="list-container">
+    {% for exp in experiences %}
+    <div class="list-item">
+        <div class="list-item-header">
+            <div>
+                <h3>{{ exp['position_title'] }}</h3>
+                <p class="company">{{ exp['company_name'] }}{% if exp['location'] %} - {{ exp['location'] }}{% endif %}</p>
+                <p class="date-range">
+                    {{ exp['start_date'] }} - 
+                    {% if exp['is_current'] %}{{ t.work_experience.present }}{% else %}{{ exp['end_date'] or t.common.na }}{% endif %}
+                </p>
+            </div>
+            <div class="list-item-actions">
+                <a href="{{ url_for('edit_work_experience', id=exp['id']) }}" class="btn btn-small">{{ t.buttons.edit }}</a>
+                <form method="POST" action="{{ url_for('delete_work_experience', id=exp['id']) }}" 
+                      style="display: inline;" onsubmit="return confirm('{{ t.messages.delete_confirm }}');">
+                    <button type="submit" class="btn btn-small btn-danger">{{ t.buttons.delete }}</button>
+                </form>
+            </div>
+        </div>
+        
+        {% if exp['description'] %}
+        <div class="list-item-content">
+            <h4>{{ t.work_experience.description }}:</h4>
+            <p>{{ exp['description'] }}</p>
+        </div>
+        {% endif %}
+        
+        {% if exp['achievements'] %}
+        <div class="list-item-content">
+            <h4>{{ t.work_experience.achievements }}:</h4>
+            <p>{{ exp['achievements'] }}</p>
+        </div>
+        {% endif %}
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div class="empty-state">
+    <p>{{ t.work_experience.no_data }}</p>
+    <a href="{{ url_for('add_work_experience') }}" class="btn btn-primary">{{ t.work_experience.add_button }}</a>
+</div>
+{% endif %}
+{% endblock %}

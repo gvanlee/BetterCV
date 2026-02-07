@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+
+{% block title %}{{ t.skills.title }} - {{ t.app_name }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h2>{{ t.skills.title }}</h2>
+    <a href="{{ url_for('add_skill') }}" class="btn btn-primary">{{ t.buttons.add }} {{ t.skills.title }}</a>
+</div>
+
+{% if skills %}
+<div class="skills-container">
+    {% set current_category = namespace(value='') %}
+    {% for skill in skills %}
+        {% if skill['category'] != current_category.value %}
+            {% if current_category.value != '' %}
+                </div></div>
+            {% endif %}
+            {% set current_category.value = skill['category'] %}
+            <div class="skill-category">
+                <h3>{{ skill['category'] or t.skills.uncategorized }}</h3>
+                <div class="skill-list">
+        {% endif %}
+        
+        <div class="skill-item">
+            <div class="skill-info">
+                <h4>{{ skill['skill_name'] }}</h4>
+                <div class="skill-details">
+                    {% if skill['proficiency_level'] %}
+                        <span class="badge">{{ skill['proficiency_level'] }}</span>
+                    {% endif %}
+                    {% if skill['years_of_experience'] %}
+                        <span class="text-muted">{{ skill['years_of_experience'] }} {{ t.skills.years }}</span>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="skill-actions">
+                <a href="{{ url_for('edit_skill', id=skill['id']) }}" class="btn btn-small">{{ t.buttons.edit }}</a>
+                <form method="POST" action="{{ url_for('delete_skill', id=skill['id']) }}" 
+                      style="display: inline;" onsubmit="return confirm('{{ t.messages.delete_confirm }}');">
+                    <button type="submit" class="btn btn-small btn-danger">{{ t.buttons.delete }}</button>
+                </form>
+            </div>
+        </div>
+    {% endfor %}
+    </div></div>
+</div>
+{% else %}
+<div class="empty-state">
+    <p>{{ t.skills.no_data }}</p>
+    <a href="{{ url_for('add_skill') }}" class="btn btn-primary">{{ t.skills.add_button }}</a>
+</div>
+{% endif %}
+{% endblock %}

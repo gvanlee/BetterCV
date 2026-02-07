@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+
+{% block title %}{% if education %}{{ t.education.edit_title }}{% else %}{{ t.education.add_title }}{% endif %} - {{ t.app_name }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h2>{% if education %}{{ t.education.edit_title }}{% else %}{{ t.education.add_title }}{% endif %}</h2>
+</div>
+
+<form method="POST" class="form">
+    <div class="form-section">
+        <div class="form-group">
+            <label for="institution_name">{{ t.education.institution_name }} *</label>
+            <input type="text" id="institution_name" name="institution_name" 
+                   value="{{ education['institution_name'] if education else '' }}" required>
+        </div>
+
+        <div class="form-row">
+            <div class="form-group">
+                <label for="degree">{{ t.education.degree }} *</label>
+                <input type="text" id="degree" name="degree" 
+                       value="{{ education['degree'] if education else '' }}" 
+                       placeholder="{{ t.education.degree_placeholder }}" required>
+            </div>
+            
+            <div class="form-group">
+                <label for="field_of_study">{{ t.education.field_of_study }}</label>
+                <input type="text" id="field_of_study" name="field_of_study" 
+                       value="{{ education['field_of_study'] if education else '' }}"
+                       placeholder="{{ t.education.field_placeholder }}">
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label for="location">{{ t.education.location }}</label>
+            <input type="text" id="location" name="location" 
+                   value="{{ education['location'] if education else '' }}"
+                   placeholder="{{ t.education.location_placeholder }}">
+        </div>
+
+        <div class="form-row">
+            <div class="form-group">
+                <label for="start_date">{{ t.education.start_date }}</label>
+                <input type="date" id="start_date" name="start_date" 
+                       value="{{ education['start_date'] if education else '' }}">
+            </div>
+            
+            <div class="form-group">
+                <label for="end_date">{{ t.education.end_date }}</label>
+                <input type="date" id="end_date" name="end_date" 
+                       value="{{ education['end_date'] if education else '' }}">
+            </div>
+        </div>
+
+        <div class="form-row">
+            <div class="form-group">
+                <label for="gpa">{{ t.education.gpa }}</label>
+                <input type="text" id="gpa" name="gpa" 
+                       value="{{ education['gpa'] if education else '' }}"
+                       placeholder="{{ t.education.gpa_placeholder }}">
+            </div>
+            
+            <div class="form-group">
+                <label for="honors">{{ t.education.honors }}</label>
+                <input type="text" id="honors" name="honors" 
+                       value="{{ education['honors'] if education else '' }}"
+                       placeholder="{{ t.education.honors_placeholder }}">
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label for="description">{{ t.education.description }}</label>
+            <textarea id="description" name="description" 
+                      rows="4">{{ education['description'] if education else '' }}</textarea>
+            <small>{{ t.education.description_help }}</small>
+        </div>
+
+        <div class="form-group">
+            <label for="display_order">{{ t.education.display_order }}</label>
+            <input type="number" id="display_order" name="display_order" 
+                   value="{{ education['display_order'] if education else 0 }}" min="0">
+            <small>{{ t.education.display_order_help }}</small>
+        </div>
+    </div>
+
+    <div class="form-actions">
+        <button type="submit" class="btn btn-primary">{{ t.buttons.save }}</button>
+        <a href="{{ url_for('view_education') }}" class="btn btn-secondary">{{ t.buttons.cancel }}</a>
+    </div>
+</form>
+{% endblock %}

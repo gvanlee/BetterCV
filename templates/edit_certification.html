@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+
+{% block title %}{% if certification %}{{ t.certifications.edit_title }}{% else %}{{ t.certifications.add_title }}{% endif %} - {{ t.app_name }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h2>{% if certification %}{{ t.certifications.edit_title }}{% else %}{{ t.certifications.add_title }}{% endif %}</h2>
+</div>
+
+<form method="POST" class="form">
+    <div class="form-section">
+        <div class="form-group">
+            <label for="certification_name">{{ t.certifications.certification_name }} *</label>
+            <input type="text" id="certification_name" name="certification_name" 
+                   value="{{ certification['certification_name'] if certification else '' }}" required>
+        </div>
+
+        <div class="form-group">
+            <label for="issuing_organization">{{ t.certifications.issuing_organization }} *</label>
+            <input type="text" id="issuing_organization" name="issuing_organization" 
+                   value="{{ certification['issuing_organization'] if certification else '' }}" required>
+        </div>
+
+        <div class="form-row">
+            <div class="form-group">
+                <label for="issue_date">{{ t.certifications.issue_date }}</label>
+                <input type="date" id="issue_date" name="issue_date" 
+                       value="{{ certification['issue_date'] if certification else '' }}">
+            </div>
+            
+            <div class="form-group">
+                <label for="expiration_date">{{ t.certifications.expiration_date }}</label>
+                <input type="date" id="expiration_date" name="expiration_date" 
+                       value="{{ certification['expiration_date'] if certification else '' }}">
+                <small>{{ t.certifications.expiration_help }}</small>
+            </div>
+        </div>
+
+        <div class="form-row">
+            <div class="form-group">
+                <label for="credential_id">{{ t.certifications.credential_id }}</label>
+                <input type="text" id="credential_id" name="credential_id" 
+                       value="{{ certification['credential_id'] if certification else '' }}">
+            </div>
+            
+            <div class="form-group">
+                <label for="credential_url">{{ t.certifications.credential_url }}</label>
+                <input type="url" id="credential_url" name="credential_url" 
+                       value="{{ certification['credential_url'] if certification else '' }}"
+                       placeholder="https://credential-verification-url.com">
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label for="description">{{ t.certifications.description }}</label>
+            <textarea id="description" name="description" 
+                      rows="4">{{ certification['description'] if certification else '' }}</textarea>
+            <small>{{ t.certifications.description_help }}</small>
+        </div>
+
+        <div class="form-group">
+            <label for="display_order">{{ t.certifications.display_order }}</label>
+            <input type="number" id="display_order" name="display_order" 
+                   value="{{ certification['display_order'] if certification else 0 }}" min="0">
+            <small>{{ t.certifications.display_order_help }}</small>
+        </div>
+    </div>
+
+    <div class="form-actions">
+        <button type="submit" class="btn btn-primary">{{ t.buttons.save }}</button>
+        <a href="{{ url_for('view_certifications') }}" class="btn btn-secondary">{{ t.buttons.cancel }}</a>
+    </div>
+</form>
+{% endblock %}

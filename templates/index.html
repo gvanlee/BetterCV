@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+
+{% block title %}{{ t.nav.home }} - {{ t.app_name }}{% endblock %}
+
+{% block content %}
+<div class="hero">
+    <h1>{{ t.home.welcome }}</h1>
+    <p class="subtitle">{{ t.home.subtitle }}</p>
+</div>
+
+<div class="card-grid">
+    <div class="card">
+        <h3>{{ t.home.personal_info_title }}</h3>
+        <p>{{ t.home.personal_info_desc }}</p>
+        <a href="{{ url_for('view_personal_info') }}" class="btn btn-primary">{{ t.buttons.view }}</a>
+    </div>
+
+    <div class="card">
+        <h3>{{ t.home.work_experience_title }}</h3>
+        <p>{{ t.home.work_experience_desc }}</p>
+        <a href="{{ url_for('view_work_experience') }}" class="btn btn-primary">{{ t.buttons.view }}</a>
+    </div>
+
+    <div class="card">
+        <h3>{{ t.home.education_title }}</h3>
+        <p>{{ t.home.education_desc }}</p>
+        <a href="{{ url_for('view_education') }}" class="btn btn-primary">{{ t.buttons.view }}</a>
+    </div>
+
+    <div class="card">
+        <h3>{{ t.home.skills_title }}</h3>
+        <p>{{ t.home.skills_desc }}</p>
+        <a href="{{ url_for('view_skills') }}" class="btn btn-primary">{{ t.buttons.view }}</a>
+    </div>
+
+    <div class="card">
+        <h3>{{ t.home.projects_title }}</h3>
+        <p>{{ t.home.projects_desc }}</p>
+        <a href="{{ url_for('view_projects') }}" class="btn btn-primary">{{ t.buttons.view }}</a>
+    </div>
+
+    <div class="card">
+        <h3>{{ t.home.certifications_title }}</h3>
+        <p>{{ t.home.certifications_desc }}</p>
+        <a href="{{ url_for('view_certifications') }}" class="btn btn-primary">{{ t.buttons.view }}</a>
+    </div>
+
+    <div class="card">
+        <h3>{{ t.home.consultants_title }}</h3>
+        <p>{{ t.home.consultants_desc }}</p>
+        <a href="{{ url_for('list_consultants') }}" class="btn btn-primary">{{ t.buttons.view }}</a>
+    </div>
+</div>
+{% endblock %}

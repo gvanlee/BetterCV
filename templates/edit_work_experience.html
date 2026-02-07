@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+
+{% block title %}{% if experience %}{{ t.work_experience.edit_title }}{% else %}{{ t.work_experience.add_title }}{% endif %} - {{ t.app_name }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h2>{% if experience %}{{ t.work_experience.edit_title }}{% else %}{{ t.work_experience.add_title }}{% endif %}</h2>
+</div>
+
+<form method="POST" class="form">
+    <div class="form-section">
+        <div class="form-row">
+            <div class="form-group">
+                <label for="company_name">{{ t.work_experience.company_name }} *</label>
+                <input type="text" id="company_name" name="company_name" 
+                       value="{{ experience['company_name'] if experience else '' }}" required>
+            </div>
+            
+            <div class="form-group">
+                <label for="position_title">{{ t.work_experience.position_title }} *</label>
+                <input type="text" id="position_title" name="position_title" 
+                       value="{{ experience['position_title'] if experience else '' }}" required>
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label for="location">{{ t.work_experience.location }}</label>
+            <input type="text" id="location" name="location" 
+                   value="{{ experience['location'] if experience else '' }}"
+                   placeholder="{{ t.work_experience.location_placeholder }}">
+        </div>
+
+        <div class="form-row">
+            <div class="form-group">
+                <label for="start_date">{{ t.work_experience.start_date }} *</label>
+                <input type="date" id="start_date" name="start_date" 
+                       value="{{ experience['start_date'] if experience else '' }}" required>
+            </div>
+            
+            <div class="form-group">
+                <label for="end_date">{{ t.work_experience.end_date }}</label>
+                <input type="date" id="end_date" name="end_date" 
+                       value="{{ experience['end_date'] if experience else '' }}"
+                       {% if experience and experience['is_current'] %}disabled{% endif %}>
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label class="checkbox-label">
+                <input type="checkbox" id="is_current" name="is_current" 
+                       {% if experience and experience['is_current'] %}checked{% endif %}
+                       onchange="document.getElementById('end_date').disabled = this.checked; if(this.checked) document.getElementById('end_date').value = '';">
+                {{ t.work_experience.is_current }}
+            </label>
+        </div>
+
+        <div class="form-group">
+            <label for="description">{{ t.work_experience.description }}</label>
+            <textarea id="description" name="description" 
+                      rows="5">{{ experience['description'] if experience else '' }}</textarea>
+            <small>{{ t.work_experience.description_help }}</small>
+        </div>
+
+        <div class="form-group">
+            <label for="achievements">{{ t.work_experience.achievements }}</label>
+            <textarea id="achievements" name="achievements" 
+                      rows="5">{{ experience['achievements'] if experience else '' }}</textarea>
+            <small>{{ t.work_experience.achievements_help }}</small>
+        </div>
+
+        <div class="form-group">
+            <label for="display_order">{{ t.work_experience.display_order }}</label>
+            <input type="number" id="display_order" name="display_order" 
+                   value="{{ experience['display_order'] if experience else 0 }}" min="0">
+            <small>{{ t.work_experience.display_order_help }}</small>
+        </div>
+    </div>
+
+    <div class="form-actions">
+        <button type="submit" class="btn btn-primary">{{ t.buttons.save }}</button>
+        <a href="{{ url_for('view_work_experience') }}" class="btn btn-secondary">{{ t.buttons.cancel }}</a>
+    </div>
+</form>
+{% endblock %}

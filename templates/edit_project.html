@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+
+{% block title %}{% if project %}{{ t.projects.edit_title }}{% else %}{{ t.projects.add_title }}{% endif %} - {{ t.app_name }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h2>{% if project %}{{ t.projects.edit_title }}{% else %}{{ t.projects.add_title }}{% endif %}</h2>
+</div>
+
+<form method="POST" class="form">
+    <div class="form-section">
+        <div class="form-group">
+            <label for="project_name">{{ t.projects.project_name }} *</label>
+            <input type="text" id="project_name" name="project_name" 
+                   value="{{ project['project_name'] if project else '' }}" required>
+        </div>
+
+        <div class="form-group">
+            <label for="role">{{ t.projects.role }}</label>
+            <input type="text" id="role" name="role" 
+                   value="{{ project['role'] if project else '' }}"
+                   placeholder="{{ t.projects.role_placeholder }}">
+        </div>
+
+        <div class="form-group">
+            <label for="description">{{ t.projects.description }}</label>
+            <textarea id="description" name="description" 
+                      rows="5">{{ project['description'] if project else '' }}</textarea>
+            <small>{{ t.projects.description_help }}</small>
+        </div>
+
+        <div class="form-group">
+            <label for="technologies_used">{{ t.projects.technologies_used }}</label>
+            <input type="text" id="technologies_used" name="technologies_used" 
+                   value="{{ project['technologies_used'] if project else '' }}"
+                   placeholder="{{ t.projects.technologies_placeholder }}">
+            <small>{{ t.projects.technologies_help }}</small>
+        </div>
+
+        <div class="form-row">
+            <div class="form-group">
+                <label for="start_date">{{ t.projects.start_date }}</label>
+                <input type="date" id="start_date" name="start_date" 
+                       value="{{ project['start_date'] if project else '' }}">
+            </div>
+            
+            <div class="form-group">
+                <label for="end_date">{{ t.projects.end_date }}</label>
+                <input type="date" id="end_date" name="end_date" 
+                       value="{{ project['end_date'] if project else '' }}">
+                <small>{{ t.projects.end_date_help }}</small>
+            </div>
+        </div>
+
+        <div class="form-row">
+            <div class="form-group">
+                <label for="project_url">{{ t.projects.project_url }}</label>
+                <input type="url" id="project_url" name="project_url" 
+                       value="{{ project['project_url'] if project else '' }}"
+                       placeholder="https://project-demo.com">
+            </div>
+            
+            <div class="form-group">
+                <label for="github_url">{{ t.projects.github_url }}</label>
+                <input type="url" id="github_url" name="github_url" 
+                       value="{{ project['github_url'] if project else '' }}"
+                       placeholder="https://github.com/username/project">
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label for="achievements">{{ t.projects.achievements }}</label>
+            <textarea id="achievements" name="achievements" 
+                      rows="4">{{ project['achievements'] if project else '' }}</textarea>
+            <small>{{ t.projects.achievements_help }}</small>
+        </div>
+
+        <div class="form-group">
+            <label for="display_order">{{ t.projects.display_order }}</label>
+            <input type="number" id="display_order" name="display_order" 
+                   value="{{ project['display_order'] if project else 0 }}" min="0">
+            <small>{{ t.projects.display_order_help }}</small>
+        </div>
+    </div>
+
+    <div class="form-actions">
+        <button type="submit" class="btn btn-primary">{{ t.buttons.save }}</button>
+        <a href="{{ url_for('view_projects') }}" class="btn btn-secondary">{{ t.buttons.cancel }}</a>
+    </div>
+</form>
+{% endblock %}

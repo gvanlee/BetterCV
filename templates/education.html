@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+
+{% block title %}{{ t.education.title }} - {{ t.app_name }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h2>{{ t.education.title }}</h2>
+    <a href="{{ url_for('add_education') }}" class="btn btn-primary">{{ t.buttons.add }} {{ t.education.title }}</a>
+</div>
+
+{% if education %}
+<div class="list-container">
+    {% for edu in education %}
+    <div class="list-item">
+        <div class="list-item-header">
+            <div>
+                <h3>{{ edu['degree'] }}{% if edu['field_of_study'] %} in {{ edu['field_of_study'] }}{% endif %}</h3>
+                <p class="company">{{ edu['institution_name'] }}{% if edu['location'] %} - {{ edu['location'] }}{% endif %}</p>
+                <p class="date-range">
+                    {% if edu['start_date'] %}{{ edu['start_date'] }} - {% endif %}
+                    {{ edu['end_date'] or t.education.in_progress }}
+                </p>
+                {% if edu['gpa'] %}
+                <p class="gpa">{{ t.education.gpa }}: {{ edu['gpa'] }}</p>
+                {% endif %}
+            </div>
+            <div class="list-item-actions">
+                <a href="{{ url_for('edit_education', id=edu['id']) }}" class="btn btn-small">{{ t.buttons.edit }}</a>
+                <form method="POST" action="{{ url_for('delete_education', id=edu['id']) }}" 
+                      style="display: inline;" onsubmit="return confirm('{{ t.messages.delete_confirm }}');">
+                    <button type="submit" class="btn btn-small btn-danger">{{ t.buttons.delete }}</button>
+                </form>
+            </div>
+        </div>
+        
+        {% if edu['honors'] %}
+        <div class="list-item-content">
+            <h4>{{ t.education.honors }}:</h4>
+            <p>{{ edu['honors'] }}</p>
+        </div>
+        {% endif %}
+        
+        {% if edu['description'] %}
+        <div class="list-item-content">
+            <h4>{{ t.education.description }}:</h4>
+            <p>{{ edu['description'] }}</p>
+        </div>
+        {% endif %}
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div class="empty-state">
+    <p>{{ t.education.no_data }}</p>
+    <a href="{{ url_for('add_education') }}" class="btn btn-primary">{{ t.education.add_button }}</a>
+</div>
+{% endif %}
+{% endblock %}

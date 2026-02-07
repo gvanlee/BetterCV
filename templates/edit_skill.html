@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+
+{% block title %}{% if skill %}{{ t.skills.edit_title }}{% else %}{{ t.skills.add_title }}{% endif %} - {{ t.app_name }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h2>{% if skill %}{{ t.skills.edit_title }}{% else %}{{ t.skills.add_title }}{% endif %}</h2>
+</div>
+
+<form method="POST" class="form">
+    <div class="form-section">
+        <div class="form-group">
+            <label for="skill_name">{{ t.skills.skill_name }} *</label>
+            <input type="text" id="skill_name" name="skill_name" 
+                   value="{{ skill['skill_name'] if skill else '' }}" required>
+        </div>
+
+        <div class="form-row">
+            <div class="form-group">
+                <label for="category">{{ t.skills.category }}</label>
+                <input type="text" id="category" name="category" 
+                       value="{{ skill['category'] if skill else '' }}"
+                       placeholder="{{ t.skills.category_placeholder }}"
+                       list="category-suggestions">
+                <datalist id="category-suggestions">
+                    <option value="Programming Languages">
+                    <option value="Frameworks & Libraries">
+                    <option value="Tools & Technologies">
+                    <option value="Databases">
+                    <option value="Cloud Platforms">
+                    <option value="Soft Skills">
+                    <option value="Languages">
+                </datalist>
+            </div>
+            
+            <div class="form-group">
+                <label for="proficiency_level">{{ t.skills.proficiency_level }}</label>
+                <select id="proficiency_level" name="proficiency_level">
+                    <option value="">{{ t.skills.select_level }}</option>
+                    <option value="Beginner" {% if skill and skill['proficiency_level'] == 'Beginner' %}selected{% endif %}>{{ t.skills.beginner }}</option>
+                    <option value="Intermediate" {% if skill and skill['proficiency_level'] == 'Intermediate' %}selected{% endif %}>{{ t.skills.intermediate }}</option>
+                    <option value="Advanced" {% if skill and skill['proficiency_level'] == 'Advanced' %}selected{% endif %}>{{ t.skills.advanced }}</option>
+                    <option value="Expert" {% if skill and skill['proficiency_level'] == 'Expert' %}selected{% endif %}>{{ t.skills.expert }}</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="form-row">
+            <div class="form-group">
+                <label for="years_of_experience">{{ t.skills.years_of_experience }}</label>
+                <input type="number" id="years_of_experience" name="years_of_experience" 
+                       value="{{ skill['years_of_experience'] if skill else '' }}" 
+                       min="0" step="0.5">
+            </div>
+            
+            <div class="form-group">
+                <label for="display_order">{{ t.skills.display_order }}</label>
+                <input type="number" id="display_order" name="display_order" 
+                       value="{{ skill['display_order'] if skill else 0 }}" min="0">
+                <small>{{ t.skills.display_order_help }}</small>
+            </div>
+        </div>
+    </div>
+
+    <div class="form-actions">
+        <button type="submit" class="btn btn-primary">{{ t.buttons.save }}</button>
+        <a href="{{ url_for('view_skills') }}" class="btn btn-secondary">{{ t.buttons.cancel }}</a>
+    </div>
+</form>
+{% endblock %}

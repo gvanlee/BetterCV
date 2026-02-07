@@ -1,0 +1,13 @@
+version: '3.8'
+
+services:
+  bettercv:
+    build: .
+    container_name: bettercv-app
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - FLASK_ENV=development
+    restart: unless-stopped

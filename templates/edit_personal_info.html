@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+
+{% block title %}{% if info %}{{ t.personal_info.edit_title }}{% else %}{{ t.personal_info.add_title }}{% endif %} - {{ t.app_name }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h2>{% if info %}{{ t.personal_info.edit_title }}{% else %}{{ t.personal_info.add_title }}{% endif %}</h2>
+</div>
+
+<form method="POST" class="form">
+    <div class="form-section">
+        <h3>{{ t.personal_info.basic_info }}</h3>
+        
+        <div class="form-row">
+            <div class="form-group">
+                <label for="first_name">{{ t.personal_info.first_name }} *</label>
+                <input type="text" id="first_name" name="first_name" 
+                       value="{{ info['first_name'] if info else '' }}" required>
+            </div>
+            
+            <div class="form-group">
+                <label for="last_name">{{ t.personal_info.last_name }} *</label>
+                <input type="text" id="last_name" name="last_name" 
+                       value="{{ info['last_name'] if info else '' }}" required>
+            </div>
+        </div>
+
+        <div class="form-row">
+            <div class="form-group">
+                <label for="email">{{ t.personal_info.email }} *</label>
+                <input type="email" id="email" name="email" 
+                       value="{{ info['email'] if info else '' }}" required>
+            </div>
+            
+            <div class="form-group">
+                <label for="phone">{{ t.personal_info.phone }}</label>
+                <input type="tel" id="phone" name="phone" 
+                       value="{{ info['phone'] if info else '' }}">
+            </div>
+        </div>
+    </div>
+
+    <div class="form-section">
+        <h3>{{ t.personal_info.address_section }}</h3>
+        
+        <div class="form-group">
+            <label for="address">{{ t.personal_info.address }}</label>
+            <input type="text" id="address" name="address" 
+                   value="{{ info['address'] if info else '' }}">
+        </div>
+
+        <div class="form-row">
+            <div class="form-group">
+                <label for="city">{{ t.personal_info.city }}</label>
+                <input type="text" id="city" name="city" 
+                       value="{{ info['city'] if info else '' }}">
+            </div>
+            
+            <div class="form-group">
+                <label for="state">{{ t.personal_info.state }}</label>
+                <input type="text" id="state" name="state" 
+                       value="{{ info['state'] if info else '' }}">
+            </div>
+        </div>
+
+        <div class="form-row">
+            <div class="form-group">
+                <label for="zip_code">{{ t.personal_info.zip_code }}</label>
+                <input type="text" id="zip_code" name="zip_code" 
+                       value="{{ info['zip_code'] if info else '' }}">
+            </div>
+            
+            <div class="form-group">
+                <label for="country">{{ t.personal_info.country }}</label>
+                <input type="text" id="country" name="country" 
+                       value="{{ info['country'] if info else '' }}">
+            </div>
+        </div>
+    </div>
+
+    <div class="form-section">
+        <h3>{{ t.personal_info.online_presence }}</h3>
+        
+        <div class="form-group">
+            <label for="linkedin_url">{{ t.personal_info.linkedin_url }}</label>
+            <input type="url" id="linkedin_url" name="linkedin_url" 
+                   value="{{ info['linkedin_url'] if info else '' }}"
+                   placeholder="https://linkedin.com/in/yourprofile">
+        </div>
+
+        <div class="form-group">
+            <label for="github_url">{{ t.personal_info.github_url }}</label>
+            <input type="url" id="github_url" name="github_url" 
+                   value="{{ info['github_url'] if info else '' }}"
+                   placeholder="https://github.com/yourusername">
+        </div>
+
+        <div class="form-group">
+            <label for="portfolio_url">{{ t.personal_info.portfolio_url }}</label>
+            <input type="url" id="portfolio_url" name="portfolio_url" 
+                   value="{{ info['portfolio_url'] if info else '' }}"
+                   placeholder="https://yourportfolio.com">
+        </div>
+    </div>
+
+    <div class="form-section">
+        <h3>{{ t.personal_info.professional_summary }}</h3>
+        
+        <div class="form-group">
+            <label for="professional_summary">{{ t.personal_info.summary }}</label>
+            <textarea id="professional_summary" name="professional_summary" 
+                      rows="6">{{ info['professional_summary'] if info else '' }}</textarea>
+            <small>{{ t.personal_info.summary_help }}</small>
+        </div>
+    </div>
+
+    <div class="form-actions">
+        <button type="submit" class="btn btn-primary">{{ t.buttons.save }}</button>
+        <a href="{{ url_for('view_personal_info') }}" class="btn btn-secondary">{{ t.buttons.cancel }}</a>
+    </div>
+</form>
+{% endblock %}

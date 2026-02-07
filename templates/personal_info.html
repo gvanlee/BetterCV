@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+
+{% block title %}{{ t.personal_info.title }} - {{ t.app_name }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h2>{{ t.personal_info.title }}</h2>
+    <a href="{{ url_for('edit_personal_info') }}" class="btn btn-primary">{{ t.buttons.edit }}</a>
+</div>
+
+{% if info %}
+<div class="info-card">
+    <div class="info-section">
+        <h3>{{ t.personal_info.basic_info }}</h3>
+        <div class="info-grid">
+            <div class="info-item">
+                <label>{{ t.common.name }}:</label>
+                <span>{{ info['first_name'] }} {{ info['last_name'] }}</span>
+            </div>
+            <div class="info-item">
+                <label>{{ t.personal_info.email }}:</label>
+                <span>{{ info['email'] }}</span>
+            </div>
+            <div class="info-item">
+                <label>{{ t.personal_info.phone }}:</label>
+                <span>{{ info['phone'] or t.common.na }}</span>
+            </div>
+        </div>
+    </div>
+
+    {% if info['address'] or info['city'] or info['state'] %}
+    <div class="info-section">
+        <h3>{{ t.personal_info.address_section }}</h3>
+        <p>
+            {% if info['address'] %}{{ info['address'] }}<br>{% endif %}
+            {% if info['city'] %}{{ info['city'] }}{% endif %}
+            {% if info['state'] %}, {{ info['state'] }}{% endif %}
+            {% if info['zip_code'] %} {{ info['zip_code'] }}{% endif %}
+            {% if info['country'] %}<br>{{ info['country'] }}{% endif %}
+        </p>
+    </div>
+    {% endif %}
+
+    {% if info['linkedin_url'] or info['github_url'] or info['portfolio_url'] %}
+    <div class="info-section">
+        <h3>{{ t.personal_info.online_presence }}</h3>
+        <div class="info-grid">
+            {% if info['linkedin_url'] %}
+            <div class="info-item">
+                <label>LinkedIn:</label>
+                <span><a href="{{ info['linkedin_url'] }}" target="_blank">{{ info['linkedin_url'] }}</a></span>
+            </div>
+            {% endif %}
+            {% if info['github_url'] %}
+            <div class="info-item">
+                <label>GitHub:</label>
+                <span><a href="{{ info['github_url'] }}" target="_blank">{{ info['github_url'] }}</a></span>
+            </div>
+            {% endif %}
+            {% if info['portfolio_url'] %}
+            <div class="info-item">
+                <label>{{ t.personal_info.portfolio_url }}:</label>
+                <span><a href="{{ info['portfolio_url'] }}" target="_blank">{{ info['portfolio_url'] }}</a></span>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+
+    {% if info['professional_summary'] %}
+    <div class="info-section">
+        <h3>{{ t.personal_info.professional_summary }}</h3>
+        <p>{{ info['professional_summary'] }}</p>
+    </div>
+    {% endif %}
+</div>
+{% else %}
+<div class="empty-state">
+    <p>{{ t.personal_info.no_data }}</p>
+    <a href="{{ url_for('edit_personal_info') }}" class="btn btn-primary">{{ t.personal_info.add_button }}</a>
+</div>
+{% endif %}
+{% endblock %}
