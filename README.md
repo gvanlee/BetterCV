@@ -1,4 +1,5 @@
 # BetterCV - Resume Management System
+## WORK IN PROGRESS, USE AT OWN RISK
 
 A Python application for managing and maintaining resume data using SQLite database.
 
