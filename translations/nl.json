@@ -10,7 +10,8 @@
     "skills": "Vaardigheden",
     "projects": "Projecten",
     "certifications": "Certificaten",
-    "consultants": "Consultants"
+    "consultants": "Consultants",
+    "admin": "Beheer"
   },
   
   "home": {
@@ -237,7 +238,25 @@
     "certification_updated": "Certificaat succesvol bijgewerkt!",
     "certification_deleted": "Certificaat succesvol verwijderd!",
     "delete_confirm": "Weet u zeker dat u dit item wilt verwijderen?",
-    "delete_confirm_consultant": "Weet u zeker dat u deze consultant wilt verwijderen? Alle bijbehorende gegevens (werkervaring, onderwijs, vaardigheden, projecten en certificeringen) worden permanent verwijderd."
+    "delete_confirm_consultant": "Weet u zeker dat u deze consultant wilt verwijderen? Alle bijbehorende gegevens (werkervaring, onderwijs, vaardigheden, projecten en certificeringen) worden permanent verwijderd.",
+    "cv_file_required": "Selecteer een CV-bestand om te uploaden.",
+    "ai_parse_error": "AI-analyse mislukt",
+    "no_data_extracted": "Er konden geen gegevens uit het CV worden geëxtraheerd. Controleer het bestand en probeer opnieuw.",
+    "no_parsed_data": "Geen geparseerde gegevens gevonden. Begin met het uploaden van een CV.",
+    "cv_import_success": "CV-gegevens succesvol geïmporteerd! U kunt nu individuele secties naar behoefte bewerken.",
+    "logged_out": "U bent succesvol uitgelogd.",
+    "oauth_failed": "Authenticatie mislukt. Probeer het opnieuw.",
+    "not_whitelisted": "Uw e-mailadres is niet geautoriseerd om toegang te krijgen tot deze applicatie. Neem contact op met een beheerder.",
+    "login_success": "Welkom! U bent succesvol ingelogd.",
+    "oauth_error": "Er is een fout opgetreden tijdens de authenticatie. Probeer het opnieuw.",
+    "whitelist_added": "E-mailadres succesvol toegevoegd aan whitelist!",
+    "whitelist_error": "Kan e-mailadres niet toevoegen aan whitelist. Probeer het opnieuw.",
+    "whitelist_removed": "E-mailadres succesvol verwijderd van whitelist!",
+    "user_role_updated": "Gebruikersrol succesvol bijgewerkt!",
+    "cannot_deactivate_self": "U kunt uw eigen account niet deactiveren.",
+    "user_deactivated": "Gebruikersaccount is gedeactiveerd.",
+    "confirm_remove_whitelist": "Weet u zeker dat u dit e-mailadres van de whitelist wilt verwijderen?",
+    "confirm_deactivate_user": "Weet u zeker dat u deze gebruiker wilt deactiveren?"
   },
   
   "common": {
@@ -248,7 +267,74 @@
     "technologies": "Technologieën"
   },
   
-  "footer": {
-    "copyright": "© 2026 BetterCV - CV Beheersysteem"
-  }
+  "cv_parsing": {
+    "title": "CV Analyseren met AI",
+    "parse_cv_button": "CV Parseren met AI",
+    "back_button": "Terug naar Consultants",
+    "how_it_works": "Hoe het werkt",
+    "description": "Upload uw CV en laat AI de informatie extraheren en structureren. Het systeem analyseert automatisch uw CV en creëert een nieuw consultantprofiel.",
+    "step_1": "Upload uw CV-bestand (PDF, DOCX, of TXT)",
+    "step_2": "AI analyseert de inhoud en extraheert gestructureerde gegevens",
+    "step_3": "Controleer de geëxtraheerde informatie",
+    "step_4": "Importeer de gegevens om een nieuw consultantprofiel aan te maken",
+    "upload_title": "CV-bestand Uploaden",
+    "file_label": "CV-bestand",
+    "file_hint": "Ondersteunde formaten: PDF, DOCX, TXT (maximale bestandsgrootte varieert per server)",
+    "name_label": "Consultantnaam (Optioneel)",
+    "name_placeholder": "bijv. Jan Jansen",
+    "name_hint": "Laat leeg om de naam uit het CV te gebruiken",
+    "parse_button": "CV Analyseren met AI",
+    "requirements_title": "Vereisten & Tips",
+    "requirement_1": "Zorg ervoor dat uw CV duidelijke sectiekoppen heeft (Ervaring, Onderwijs, Vaardigheden, enz.)",
+    "requirement_2": "Gebruik standaard datumformaten (MM/JJJJ of DD/MM/JJJJ)",
+    "requirement_3": "Voeg contactinformatie toe bovenaan uw CV",
+    "privacy_title": "Privacy",
+    "privacy_note": "Uw CV-inhoud wordt door AI verwerkt om gestructureerde gegevens te extraheren. Geen persoonlijke gegevens worden permanent opgeslagen door de AI-service.",
+    "review_title": "Geëxtraheerde Gegevens Controleren",
+    "back_to_upload": "Terug naar Upload",
+    "extracted_data_title": "Geëxtraheerde Informatie",
+    "review_instructions": "Controleer de informatie die uit uw CV is geëxtraheerd. U kunt individuele secties na het importeren bewerken.",
+    "import_button": "Deze Gegevens Importeren",
+    "try_again": "Opnieuw Proberen",
+    "current": "Huidig",
+    "and_more": "+{count} meer",
+    "original_text_preview": "Originele CV-tekst (Voorbeeld)"
+  },
+  
+  "auth": {
+    "login": "Inloggen",
+    "logout": "Uitloggen",
+    "login_subtitle": "Authenticeer met uw account",
+    "login_message": "Gebruik uw bedrijfsaccount om toegang te krijgen tot het CV-beheersysteem.",
+    "login_google": "Inloggen met Google",
+    "login_microsoft": "Inloggen met Microsoft",
+    "no_access": "Geen toegang?",
+    "contact_admin": "Neem contact op met uw systeembeheerder om uw e-mailadres aan de whitelist toe te voegen.",
+    "admin_dashboard": "Beheerderspaneel",
+    "whitelist_management": "Whitelist Beheer",
+    "user_management": "Gebruikersbeheer",
+    "email_address": "E-mailadres",
+    "notes_optional": "Notities (Optioneel)",
+    "email": "E-mail",
+    "role": "Rol",
+    "notes": "Notities",
+    "invited_by": "Uitgenodigd door",
+    "date_added": "Datum Toegevoegd",
+    "actions": "Acties",
+    "name": "Naam",
+    "provider": "Provider",
+    "consultant": "Consultant",
+    "last_login": "Laatste Login",
+    "status": "Status",
+    "active": "Actief",
+    "inactive": "Inactief",
+    "deactivate": "Deactiveren",
+    "current_user": "Dat bent u"
+  },
+  
+  "roles": {
+    "admin": "Beheerder",
+    "consultant": "Consultant"
+  },
+  
 }

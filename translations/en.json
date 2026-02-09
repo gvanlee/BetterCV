@@ -10,7 +10,8 @@
     "skills": "Skills",
     "projects": "Projects",
     "certifications": "Certifications",
-    "consultants": "Consultants"
+    "consultants": "Consultants",
+    "admin": "Admin"
   },
   
   "home": {
@@ -239,7 +240,25 @@
     "certification_updated": "Certification updated successfully!",
     "certification_deleted": "Certification deleted successfully!",
     "delete_confirm": "Are you sure you want to delete this entry?",
-    "delete_confirm_consultant": "Are you sure you want to delete this consultant? All associated data (work experience, education, skills, projects, and certifications) will be permanently deleted."
+    "delete_confirm_consultant": "Are you sure you want to delete this consultant? All associated data (work experience, education, skills, projects, and certifications) will be permanently deleted.",
+    "cv_file_required": "Please select a CV file to upload.",
+    "ai_parse_error": "AI parsing failed",
+    "no_data_extracted": "No data could be extracted from the CV. Please check the file and try again.",
+    "no_parsed_data": "No parsed data found. Please start by uploading a CV.",
+    "cv_import_success": "CV data imported successfully! You can now edit individual sections as needed.",
+    "logged_out": "You have been successfully logged out.",
+    "oauth_failed": "Authentication failed. Please try again.",
+    "not_whitelisted": "Your email is not authorized to access this application. Please contact an administrator.",
+    "login_success": "Welcome! You have been successfully logged in.",
+    "oauth_error": "An error occurred during authentication. Please try again.",
+    "whitelist_added": "Email address added to whitelist successfully!",
+    "whitelist_error": "Failed to add email to whitelist. Please try again.",
+    "whitelist_removed": "Email address removed from whitelist successfully!",
+    "user_role_updated": "User role updated successfully!",
+    "cannot_deactivate_self": "You cannot deactivate your own account.",
+    "user_deactivated": "User account has been deactivated.",
+    "confirm_remove_whitelist": "Are you sure you want to remove this email from the whitelist?",
+    "confirm_deactivate_user": "Are you sure you want to deactivate this user?"
   },
   
   "common": {
@@ -248,6 +267,76 @@
     "name": "Name",
     "description": "Description",
     "technologies": "Technologies"
+  },
+  
+  "cv_parsing": {
+    "title": "Parse CV with AI",
+    "parse_cv_button": "Parse CV with AI",
+    "back_button": "Back to Consultants",
+    "how_it_works": "How it works",
+    "description": "Upload your CV and let AI extract and structure the information for you. The system will automatically parse your resume and create a new consultant profile.",
+    "step_1": "Upload your CV file (PDF, DOCX, or TXT)",
+    "step_2": "AI analyzes the content and extracts structured data",
+    "step_3": "Review the extracted information",
+    "step_4": "Import the data to create a new consultant profile",
+    "upload_title": "Upload CV File",
+    "file_label": "CV File",
+    "file_hint": "Supported formats: PDF, DOCX, TXT (max file size varies by server)",
+    "name_label": "Consultant Name (Optional)",
+    "name_placeholder": "e.g., John Doe",
+    "name_hint": "Leave blank to use the name extracted from the CV",
+    "parse_button": "Parse CV with AI",
+    "requirements_title": "Requirements & Tips",
+    "requirement_1": "Ensure your CV contains clear section headers (Experience, Education, Skills, etc.)",
+    "requirement_2": "Use standard date formats (MM/YYYY or MM/DD/YYYY)",
+    "requirement_3": "Include contact information at the top of your CV",
+    "privacy_title": "Privacy",
+    "privacy_note": "Your CV content is processed by AI to extract structured data. No personal data is permanently stored by the AI service.",
+    "review_title": "Review Extracted Data",
+    "back_to_upload": "Back to Upload",
+    "extracted_data_title": "Extracted Information",
+    "review_instructions": "Please review the information extracted from your CV. You can edit individual sections after importing.",
+    "import_button": "Import This Data",
+    "try_again": "Try Again",
+    "current": "Current",
+    "and_more": "+{count} more",
+    "original_text_preview": "Original CV Text (Preview)"
+  },
+  
+  "auth": {
+    "login": "Login",
+    "logout": "Logout",
+    "login_subtitle": "Secure Access",
+    "login_message": "Please sign in with your authorized account",
+    "login_google": "Continue with Google",
+    "login_microsoft": "Continue with Microsoft",
+    "no_access": "Don't have access?",
+    "contact_admin": "Contact your administrator to request access.",
+    "admin_dashboard": "Admin Dashboard",
+    "whitelist_management": "Whitelist Management",
+    "user_management": "User Management",
+    "email_address": "Email Address",
+    "notes_optional": "Notes (optional)",
+    "email": "Email",
+    "role": "Role",
+    "notes": "Notes",
+    "invited_by": "Invited By",
+    "date_added": "Date Added",
+    "actions": "Actions",
+    "name": "Name",
+    "provider": "Provider",
+    "consultant": "Consultant",
+    "last_login": "Last Login",
+    "status": "Status",
+    "active": "Active",
+    "inactive": "Inactive",
+    "deactivate": "Deactivate",
+    "current_user": "(You)"
+  },
+  
+  "roles": {
+    "admin": "Admin",
+    "consultant": "Consultant"
   },
   
   "footer": {

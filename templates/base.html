@@ -9,16 +9,28 @@
 <body>
     <nav class="navbar">
         <div class="container">
-            <h1 class="logo">{{ t.app_name }}</h1>
+            <h1 class="logo">
+                <a href="{{ url_for('index') }}">
+                    <img src="{{ url_for('static', filename='bettercv_small.png') }}" height="80" width="259" alt="{{ t.app_name }}">
+                </a>
+            </h1>
             <ul class="nav-menu">
-                <li><a href="{{ url_for('index') }}">{{ t.nav.home }}</a></li>
+                {% if current_user.is_authenticated %}
                 <li><a href="{{ url_for('view_personal_info') }}">{{ t.nav.personal_info }}</a></li>
                 <li><a href="{{ url_for('view_work_experience') }}">{{ t.nav.work_experience }}</a></li>
                 <li><a href="{{ url_for('view_education') }}">{{ t.nav.education }}</a></li>
+                <li><a href="{{ url_for('view_certifications') }}">{{ t.nav.certifications }}</a></li>
                 <li><a href="{{ url_for('view_skills') }}">{{ t.nav.skills }}</a></li>
                 <li><a href="{{ url_for('view_projects') }}">{{ t.nav.projects }}</a></li>
-                <li><a href="{{ url_for('view_certifications') }}">{{ t.nav.certifications }}</a></li>
                 <li><a href="{{ url_for('list_consultants') }}">{{ t.nav.consultants }}</a></li>
+                {% if current_user.is_admin() %}
+                <li><a href="{{ url_for('admin_dashboard') }}" class="admin-link">🔐 {{ t.nav.admin }}</a></li>
+                {% endif %}
+                <li class="user-info">
+                    <span class="user-email">{{ current_user.email }}</span>
+                    <a href="{{ url_for('logout') }}" class="btn-logout">{{ t.auth.logout }}</a>
+                </li>
+                {% endif %}
 
                 <li class="language-selector">
                     <select id="languageDropdown" onchange="changeLanguage(this.value)">

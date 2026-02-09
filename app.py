@@ -1,12 +1,64 @@
 from flask import Flask, render_template, request, redirect, url_for, flash, session, Response
+from flask_login import LoginManager, login_user, logout_user, login_required, current_user
 from database import get_db_connection
 from datetime import datetime
 from database import init_database
+from authlib.integrations.flask_client import OAuth
+from dotenv import load_dotenv
 import json
 import os
+import google.generativeai as genai
+import PyPDF2
+import docx
+import io
+import tempfile
+
+# Import authentication modules
+from auth import User, get_all_users, get_all_whitelist, add_to_whitelist, remove_from_whitelist, update_user_role, deactivate_user, get_all_consultants
+from decorators import admin_required, consultant_or_admin_required, check_consultant_access
+
+# Load environment variables
+load_dotenv()
 
 app = Flask(__name__)
-app.secret_key = 'h9sdf696f34rhfvvhkxjvodfyg8yer89g7ye-8yhoiuver8v8erf98yyh34f'
+app.secret_key = os.getenv('SECRET_KEY', 'h9sdf696f34rhfvvhkxjvodfyg8yer89g7ye-8yhoiuver8v8erf98yyh34f')
+
+# Initialize Flask-Login
+login_manager = LoginManager()
+login_manager.init_app(app)
+login_manager.login_view = 'login'
+login_manager.login_message = 'Please log in to access this page.'
+login_manager.login_message_category = 'error'
+
+# Initialize OAuth
+oauth = OAuth(app)
+
+# Configure Google OAuth
+google = oauth.register(
+    name='google',
+    client_id=os.getenv('GOOGLE_CLIENT_ID'),
+    client_secret=os.getenv('GOOGLE_CLIENT_SECRET'),
+    server_metadata_url='https://accounts.google.com/.well-known/openid-configuration',
+    client_kwargs={'scope': 'openid email profile'}
+)
+
+# Configure Microsoft OAuth
+microsoft = oauth.register(
+    name='microsoft',
+    client_id=os.getenv('MICROSOFT_CLIENT_ID'),
+    client_secret=os.getenv('MICROSOFT_CLIENT_SECRET'),
+    authorize_url='https://login.microsoftonline.com/common/oauth2/v2.0/authorize',
+    authorize_params=None,
+    access_token_url='https://login.microsoftonline.com/common/oauth2/v2.0/token',
+    access_token_params=None,
+    refresh_token_url=None,
+    client_kwargs={'scope': 'openid email profile'}
+)
+
+@login_manager.user_loader
+def load_user(user_id):
+    """Load user by ID for Flask-Login"""
+    return User.get_by_id(user_id)
 
 # Load translations
 TRANSLATIONS = {}
@@ -56,6 +108,7 @@ def inject_translations():
     return {
         't': TRANSLATIONS.get(lang, TRANSLATIONS['en']),
         'current_lang': lang,
+        'current_user': current_user,
         'consultants': consultants,
         'current_consultant': current_consultant,
         'available_languages': {
@@ -70,6 +123,191 @@ def set_language(lang):
     if lang in TRANSLATIONS:
         session['language'] = lang
     return redirect(request.referrer or url_for('index'))
+
+
+# ==================== Authentication Routes ====================
+
+@app.route('/login')
+def login():
+    """Login page"""
+    if current_user.is_authenticated:
+        return redirect(url_for('index'))
+    return render_template('login.html')
+
+
+@app.route('/logout')
+@login_required
+def logout():
+    """Logout user"""
+    logout_user()
+    flash(get_translation('messages.logged_out'), 'success')
+    return redirect(url_for('login'))
+
+
+@app.route('/auth/google')
+def auth_google():
+    """Initiate Google OAuth"""
+    redirect_uri = url_for('auth_google_callback', _external=True)
+    return google.authorize_redirect(redirect_uri)
+
+
+@app.route('/auth/google/callback')
+def auth_google_callback():
+    """Google OAuth callback"""
+    try:
+        token = google.authorize_access_token()
+        user_info = token.get('userinfo')
+        
+        if not user_info:
+            flash(get_translation('messages.oauth_failed'), 'error')
+            return redirect(url_for('login'))
+        
+        email = user_info.get('email')
+        name = user_info.get('name')
+        oauth_id = user_info.get('sub')
+        
+        # Check if user exists
+        user = User.get_by_email(email)
+        
+        if not user:
+            # Check whitelist and create user
+            user = User.create_user(email, name, 'google', oauth_id)
+            if not user:
+                flash(get_translation('messages.not_whitelisted'), 'error')
+                return redirect(url_for('login'))
+        
+        # Update last login
+        User.update_last_login(user.id)
+        
+        # Log in user
+        login_user(user)
+        flash(get_translation('messages.login_success'), 'success')
+        
+        # Set consultant_id in session for consultants
+        if user.consultant_id:
+            session['consultant_id'] = user.consultant_id
+        
+        return redirect(url_for('index'))
+        
+    except Exception as e:
+        print(f"OAuth error: {str(e)}")
+        flash(get_translation('messages.oauth_error'), 'error')
+        return redirect(url_for('login'))
+
+
+@app.route('/auth/microsoft')
+def auth_microsoft():
+    """Initiate Microsoft OAuth"""
+    redirect_uri = url_for('auth_microsoft_callback', _external=True)
+    return microsoft.authorize_redirect(redirect_uri)
+
+
+@app.route('/auth/microsoft/callback')
+def auth_microsoft_callback():
+    """Microsoft OAuth callback"""
+    try:
+        token = microsoft.authorize_access_token()
+        
+        # Get user info from Microsoft Graph API
+        resp = microsoft.get('https://graph.microsoft.com/v1.0/me', token=token)
+        user_info = resp.json()
+        
+        email = user_info.get('mail') or user_info.get('userPrincipalName')
+        name = user_info.get('displayName')
+        oauth_id = user_info.get('id')
+        
+        if not email:
+            flash(get_translation('messages.oauth_failed'), 'error')
+            return redirect(url_for('login'))
+        
+        # Check if user exists
+        user = User.get_by_email(email)
+        
+        if not user:
+            # Check whitelist and create user
+            user = User.create_user(email, name, 'microsoft', oauth_id)
+            if not user:
+                flash(get_translation('messages.not_whitelisted'), 'error')
+                return redirect(url_for('login'))
+        
+        # Update last login
+        User.update_last_login(user.id)
+        
+        # Log in user
+        login_user(user)
+        flash(get_translation('messages.login_success'), 'success')
+        
+        # Set consultant_id in session for consultants
+        if user.consultant_id:
+            session['consultant_id'] = user.consultant_id
+        
+        return redirect(url_for('index'))
+        
+    except Exception as e:
+        print(f"OAuth error: {str(e)}")
+        flash(get_translation('messages.oauth_error'), 'error')
+        return redirect(url_for('login'))
+
+
+# ==================== Admin Routes ====================
+
+@app.route('/admin')
+@admin_required
+def admin_dashboard():
+    """Admin dashboard"""
+    users = get_all_users()
+    whitelist = get_all_whitelist()
+    consultants = get_all_consultants()
+    return render_template('admin.html', users=users, whitelist=whitelist, all_consultants=consultants)
+
+
+@app.route('/admin/whitelist/add', methods=['POST'])
+@admin_required
+def admin_add_whitelist():
+    """Add email to whitelist"""
+    email = request.form.get('email')
+    role = request.form.get('role', 'consultant')
+    notes = request.form.get('notes', '')
+    
+    success, message = add_to_whitelist(email, role, current_user.id, notes)
+    
+    if success:
+        flash(get_translation('messages.whitelist_added'), 'success')
+    else:
+        flash(f"{get_translation('messages.whitelist_error')}: {message}", 'error')
+    
+    return redirect(url_for('admin_dashboard'))
+
+
+@app.route('/admin/whitelist/remove/<int:whitelist_id>', methods=['POST'])
+@admin_required
+def admin_remove_whitelist(whitelist_id):
+    """Remove email from whitelist"""
+    remove_from_whitelist(whitelist_id)
+    flash(get_translation('messages.whitelist_removed'), 'success')
+    return redirect(url_for('admin_dashboard'))
+
+
+@app.route('/admin/user/update-role/<int:user_id>', methods=['POST'])
+@admin_required
+def admin_update_user_role(user_id):
+    """Update user role"""
+    new_role = request.form.get('role')
+    update_user_role(user_id, new_role)
+    flash(get_translation('messages.user_role_updated'), 'success')
+    return redirect(url_for('admin_dashboard'))
+
+
+@app.route('/admin/user/deactivate/<int:user_id>', methods=['POST'])
+@admin_required
+def admin_deactivate_user(user_id):
+    """Deactivate user account"""
+    if user_id == current_user.id:
+        flash(get_translation('messages.cannot_deactivate_self'), 'error')
+    else:
+        deactivate_user(user_id)
+        flash(get_translation('messages.user_deactivated'), 'success')
+    return redirect(url_for('admin_dashboard'))
 
 
 def get_consultants(conn):
@@ -108,7 +346,10 @@ def ensure_consultant_selected():
         'add_consultant',
         'switch_consultant',
         'import_consultant',
-        'export_consultant'
+        'export_consultant',
+        'parse_cv',
+        'review_parsed_cv',
+        'import_parsed_cv'
     }:
         return None
 
@@ -122,7 +363,176 @@ def ensure_consultant_selected():
     return None
 
 
+# ==================== AI Configuration and CV Parsing ====================
+
+# Configure Gemini AI - Set your API key as environment variable
+GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
+if GEMINI_API_KEY:
+    genai.configure(api_key=GEMINI_API_KEY)
+
+
+def extract_text_from_pdf(file_content):
+    """Extract text from PDF file."""
+    try:
+        pdf_reader = PyPDF2.PdfReader(io.BytesIO(file_content))
+        text = ""
+        for page in pdf_reader.pages:
+            text += page.extract_text() + "\n"
+        return text.strip()
+    except Exception as e:
+        return f"Error reading PDF: {str(e)}"
+
+
+def extract_text_from_docx(file_content):
+    """Extract text from DOCX file."""
+    try:
+        doc = docx.Document(io.BytesIO(file_content))
+        text = ""
+        for paragraph in doc.paragraphs:
+            text += paragraph.text + "\n"
+        return text.strip()
+    except Exception as e:
+        return f"Error reading DOCX: {str(e)}"
+
+
+def extract_text_from_file(file):
+    """Extract text from uploaded file based on file type."""
+    filename = file.filename.lower()
+    file_content = file.read()
+    file.seek(0)  # Reset file pointer
+    
+    if filename.endswith('.pdf'):
+        return extract_text_from_pdf(file_content)
+    elif filename.endswith(('.docx', '.doc')):
+        return extract_text_from_docx(file_content)
+    elif filename.endswith('.txt'):
+        return file_content.decode('utf-8', errors='ignore')
+    else:
+        return "Unsupported file type. Please upload PDF, DOCX, or TXT files."
+
+
+def parse_cv_with_gemini(cv_text):
+    """Parse CV text using Gemini AI and return structured data."""
+    if not GEMINI_API_KEY:
+        return None, "Gemini API key not configured. Please set GEMINI_API_KEY environment variable."
+    
+    try:
+        model = genai.GenerativeModel('gemini-2.5-flash')
+        
+        prompt = f"""
+Analyze the following CV/resume text and extract structured information 
+  in JSON format.
+Keep in mind that the CV may have varying formats and may not explicitly 
+  label sections, so you need to infer the structure based on the content.
+Also, the CV may be in either Dutch or English, so be prepared to handle 
+  both languages. Focus on extracting accurate information based on what 
+  is explicitly mentioned in the CV, and do not make assumptions beyond 
+  the provided text.
+Dates may be provided in full or partially (e.g. "Okt 2023" or "Oct 2024").
+  
+The JSON should match this exact schema:
+
+{{
+  "consultant": {{
+    "display_name": "Full Name from CV"
+  }},
+  "personal_info": {{
+    "first_name": "First Name",
+    "last_name": "Last Name", 
+    "email": "email@example.com",
+    "phone": "Phone Number",
+    "address": "Full Address",
+    "summary": "Professional summary or objective"
+  }},
+  "work_experience": [
+    {{
+      "job_title": "Job Title",
+      "company_name": "Company Name",
+      "location": "City, Country",
+      "start_date": "YYYY-MM-DD",
+      "end_date": "YYYY-MM-DD or null for current",
+      "description": "Job description and achievements"
+    }}
+  ],
+  "education": [
+    {{
+      "degree": "Degree Type",
+      "field_of_study": "Field of Study",
+      "institution": "Institution Name",
+      "location": "City, Country",
+      "start_date": "YYYY-MM-DD",
+      "end_date": "YYYY-MM-DD",
+      "description": "Additional details"
+    }}
+  ],
+  "skills": [
+    {{
+      "category": "Category (e.g., Programming, Languages, etc.)",
+      "name": "Skill Name",
+      "proficiency": "Proficiency Level",
+      "description": "Optional description"
+    }}
+  ],
+  "projects": [
+    {{
+      "name": "Project Name",
+      "description": "Project description",
+      "technologies": "Technologies used",
+      "start_date": "YYYY-MM-DD",
+      "end_date": "YYYY-MM-DD or null",
+      "url": "Project URL if mentioned"
+    }}
+  ],
+  "certifications": [
+    {{
+      "name": "Certification Name",
+      "issuing_organization": "Issuing Organization",
+      "issue_date": "YYYY-MM-DD",
+      "expiry_date": "YYYY-MM-DD or null",
+      "credential_id": "Credential ID if mentioned",
+      "description": "Description"
+    }}
+  ]
+}}
+
+Rules:
+- Use null for missing dates or empty end_dates for current positions
+- Format dates as YYYY-MM-DD or YYYY-MM if day is unknown, or YYYY if only year
+- Extract only information that is explicitly mentioned in the CV
+- For skills, group similar skills into logical categories
+- Return only valid JSON, no additional text or explanations
+- If information is missing, use null or omit the field, do not use "None"
+
+CV Text:
+{cv_text}
+"""
+
+        response = model.generate_content(prompt)
+        
+        if not response.text:
+            return None, "No response from Gemini AI"
+            
+        # Try to parse the JSON response
+        try:
+            # Clean up the response text (remove markdown formatting if present)
+            json_text = response.text.strip()
+            if json_text.startswith('```json'):
+                json_text = json_text[7:]
+            if json_text.endswith('```'):
+                json_text = json_text[:-3]
+            
+            parsed_data = json.loads(json_text)
+            return parsed_data, None
+            
+        except json.JSONDecodeError as e:
+            return None, f"Failed to parse AI response as JSON: {str(e)}"
+            
+    except Exception as e:
+        return None, f"Error calling Gemini AI: {str(e)}"
+
+
 @app.route('/')
+@login_required
 def index():
     """Home page with navigation to all sections."""
     return render_template('index.html')
@@ -131,6 +541,7 @@ def index():
 # ==================== Consultant Routes ====================
 
 @app.route('/consultants')
+@login_required
 def list_consultants():
     """List consultants and allow creation/import/export."""
     conn = get_db_connection()
@@ -398,6 +809,96 @@ def import_consultant():
     return render_template('import_consultant.html', consultants=consultants)
 
 
+@app.route('/consultants/parse-cv', methods=['GET', 'POST'])
+def parse_cv():
+    """Parse CV using AI and import consultant data."""
+    if request.method == 'POST':
+        cv_file = request.files.get('cv_file')
+        consultant_name = request.form.get('consultant_name', '').strip()
+        
+        if not cv_file:
+            flash(get_translation('messages.cv_file_required'), 'error')
+            return redirect(url_for('parse_cv'))
+        
+        # Extract text from the uploaded file
+        cv_text = extract_text_from_file(cv_file)
+        if cv_text.startswith('Error') or cv_text.startswith('Unsupported'):
+            flash(cv_text, 'error')
+            return redirect(url_for('parse_cv'))
+        
+        # Parse CV with AI
+        parsed_data, error = parse_cv_with_gemini(cv_text)
+        if error:
+            flash(f"{get_translation('messages.ai_parse_error')}: {error}", 'error')
+            return redirect(url_for('parse_cv'))
+        
+        if not parsed_data:
+            flash(get_translation('messages.no_data_extracted'), 'error')
+            return redirect(url_for('parse_cv'))
+        
+        # Use provided name if specified, otherwise use AI extracted name
+        if consultant_name:
+            if 'consultant' not in parsed_data:
+                parsed_data['consultant'] = {}
+            parsed_data['consultant']['display_name'] = consultant_name
+        
+        # Store parsed data in session for review
+        session['parsed_cv_data'] = parsed_data
+        session['cv_text_preview'] = cv_text[:500] + "..." if len(cv_text) > 500 else cv_text
+        
+        return redirect(url_for('review_parsed_cv'))
+    
+    return render_template('parse_cv.html')
+
+
+@app.route('/consultants/review-parsed-cv')
+def review_parsed_cv():
+    """Review AI-parsed CV data before importing."""
+    parsed_data = session.get('parsed_cv_data')
+    cv_text_preview = session.get('cv_text_preview', '')
+    
+    if not parsed_data:
+        flash(get_translation('messages.no_parsed_data'), 'error')
+        return redirect(url_for('parse_cv'))
+    
+    return render_template('review_parsed_cv.html', 
+                         parsed_data=parsed_data, 
+                         cv_text_preview=cv_text_preview)
+
+
+@app.route('/consultants/import-parsed-cv', methods=['POST'])
+def import_parsed_cv():
+    """Import the reviewed AI-parsed CV data."""
+    parsed_data = session.get('parsed_cv_data')
+    
+    if not parsed_data:
+        flash(get_translation('messages.no_parsed_data'), 'error')
+        return redirect(url_for('parse_cv'))
+    
+    conn = get_db_connection()
+    
+    # Create new consultant
+    display_name = parsed_data.get('consultant', {}).get('display_name', 'Unnamed Consultant')
+    result = conn.execute(
+        'INSERT INTO consultants (display_name) VALUES (?)',
+        (display_name,)
+    )
+    consultant_id = result.lastrowid
+    
+    # Import the data using existing function
+    import_consultant_data(conn, consultant_id, parsed_data)
+    conn.commit()
+    conn.close()
+    
+    # Clear session data
+    session.pop('parsed_cv_data', None)
+    session.pop('cv_text_preview', None)
+    
+    session['consultant_id'] = consultant_id
+    flash(get_translation('messages.cv_import_success'), 'success')
+    return redirect(url_for('view_personal_info'))
+
+
 @app.route('/consultants/delete/<int:consultant_id>', methods=['POST'])
 def delete_consultant(consultant_id):
     """Delete a consultant."""
@@ -524,6 +1025,7 @@ def export_consultant(consultant_id):
 # ==================== Personal Info Routes ====================
 
 @app.route('/personal-info')
+@login_required
 def view_personal_info():
     """View personal information."""
     conn = get_db_connection()
@@ -537,6 +1039,7 @@ def view_personal_info():
 
 
 @app.route('/personal-info/edit', methods=['GET', 'POST'])
+@login_required
 def edit_personal_info():
     """Edit or create personal information."""
     conn = get_db_connection()
@@ -619,6 +1122,7 @@ def edit_personal_info():
 # ==================== Work Experience Routes ====================
 
 @app.route('/work-experience')
+@login_required
 def view_work_experience():
     """View all work experience entries."""
     conn = get_db_connection()
@@ -632,6 +1136,7 @@ def view_work_experience():
 
 
 @app.route('/work-experience/add', methods=['GET', 'POST'])
+@login_required
 def add_work_experience():
     """Add new work experience."""
     if request.method == 'POST':
@@ -722,6 +1227,7 @@ def delete_work_experience(id):
 # ==================== Education Routes ====================
 
 @app.route('/education')
+@login_required
 def view_education():
     """View all education entries."""
     conn = get_db_connection()
@@ -827,6 +1333,7 @@ def delete_education(id):
 # ==================== Skills Routes ====================
 
 @app.route('/skills')
+@login_required
 def view_skills():
     """View all skills."""
     conn = get_db_connection()
@@ -920,6 +1427,7 @@ def delete_skill(id):
 # ==================== Projects Routes ====================
 
 @app.route('/projects')
+@login_required
 def view_projects():
     """View all projects."""
     conn = get_db_connection()
@@ -1025,6 +1533,7 @@ def delete_project(id):
 # ==================== Certifications Routes ====================
 
 @app.route('/certifications')
+@login_required
 def view_certifications():
     """View all certifications."""
     conn = get_db_connection()

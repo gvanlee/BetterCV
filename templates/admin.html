@@ -1,0 +1,257 @@
+{% extends "base.html" %}
+
+{% block title %}{{ t.auth.admin_dashboard }} - {{ t.app_name }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h2>{{ t.auth.admin_dashboard }}</h2>
+</div>
+
+<div class="admin-container">
+    <!-- Whitelist Management -->
+    <div class="admin-section">
+        <h3>{{ t.auth.whitelist_management }}</h3>
+        
+        <form method="POST" action="{{ url_for('admin_add_whitelist') }}" class="inline-form">
+            <div class="form-row">
+                <input type="email" name="email" placeholder="{{ t.auth.email_address }}" required class="form-input">
+                <select name="role" class="form-select">
+                    <option value="consultant">{{ t.roles.consultant }}</option>
+                    <option value="admin">{{ t.roles.admin }}</option>
+                </select>
+                <input type="text" name="notes" placeholder="{{ t.auth.notes_optional }}" class="form-input">
+                <button type="submit" class="btn btn-primary">{{ t.buttons.add }}</button>
+            </div>
+        </form>
+
+        <div class="table-responsive">
+            <table class="admin-table">
+                <thead>
+                    <tr>
+                        <th>{{ t.auth.email }}</th>
+                        <th>{{ t.auth.role }}</th>
+                        <th>{{ t.auth.notes }}</th>
+                        <th>{{ t.auth.invited_by }}</th>
+                        <th>{{ t.auth.date_added }}</th>
+                        <th>{{ t.auth.actions }}</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for entry in whitelist %}
+                    <tr>
+                        <td>{{ entry['email'] }}</td>
+                        <td><span class="role-badge role-{{ entry['role'] }}">{{ entry['role'] }}</span></td>
+                        <td>{{ entry['notes'] or '-' }}</td>
+                        <td>{{ entry['invited_by_email'] or 'System' }}</td>
+                        <td>{{ entry['created_at'][:10] }}</td>
+                        <td>
+                            <form method="POST" action="{{ url_for('admin_remove_whitelist', whitelist_id=entry['id']) }}" style="display: inline;" onsubmit="return confirm('{{ t.messages.confirm_remove_whitelist }}');">
+                                <button type="submit" class="btn btn-small btn-danger">{{ t.buttons.delete }}</button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- User Management -->
+    <div class="admin-section">
+        <h3>{{ t.auth.user_management }}</h3>
+        
+        <div class="table-responsive">
+            <table class="admin-table">
+                <thead>
+                    <tr>
+                        <th>{{ t.auth.name }}</th>
+                        <th>{{ t.auth.email }}</th>
+                        <th>{{ t.auth.role }}</th>
+                        <th>{{ t.auth.provider }}</th>
+                        <th>{{ t.auth.consultant }}</th>
+                        <th>{{ t.auth.last_login }}</th>
+                        <th>{{ t.auth.status }}</th>
+                        <th>{{ t.auth.actions }}</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for user in users %}
+                    <tr>
+                        <td>{{ user['name'] or '-' }}</td>
+                        <td>{{ user['email'] }}</td>
+                        <td>
+                            <form method="POST" action="{{ url_for('admin_update_user_role', user_id=user['id']) }}" style="display: inline;">
+                                <select name="role" onchange="this.form.submit()" class="role-select">
+                                    <option value="consultant" {% if user['role'] == 'consultant' %}selected{% endif %}>{{ t.roles.consultant }}</option>
+                                    <option value="admin" {% if user['role'] == 'admin' %}selected{% endif %}>{{ t.roles.admin }}</option>
+                                </select>
+                            </form>
+                        </td>
+                        <td><span class="provider-badge">{{ user['oauth_provider'] or 'N/A' }}</span></td>
+                        <td>{{ user['consultant_name'] or '-' }}</td>
+                        <td>{{ user['last_login'][:10] if user['last_login'] else 'Never' }}</td>
+                        <td>
+                            {% if user['is_active'] %}
+                                <span class="status-badge status-active">{{ t.auth.active }}</span>
+                            {% else %}
+                                <span class="status-badge status-inactive">{{ t.auth.inactive }}</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if user['is_active'] and user['id'] != current_user.id %}
+                            <form method="POST" action="{{ url_for('admin_deactivate_user', user_id=user['id']) }}" style="display: inline;" onsubmit="return confirm('{{ t.messages.confirm_deactivate_user }}');">
+                                <button type="submit" class="btn btn-small btn-danger">{{ t.auth.deactivate }}</button>
+                            </form>
+                            {% elif user['id'] == current_user.id %}
+                                <span class="text-muted">{{ t.auth.current_user }}</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<style>
+.admin-container {
+    display: flex;
+    flex-direction: column;
+    gap: 2rem;
+}
+
+.admin-section {
+    background: var(--card-background);
+    border-radius: 8px;
+    padding: 2rem;
+    box-shadow: var(--shadow);
+}
+
+.admin-section h3 {
+    margin-bottom: 1.5rem;
+    color: var(--primary-color);
+    border-bottom: 2px solid var(--border-color);
+    padding-bottom: 0.5rem;
+}
+
+.inline-form {
+    margin-bottom: 2rem;
+    padding-bottom: 1.5rem;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.inline-form .form-row {
+    display: grid;
+    grid-template-columns: 2fr 1fr 2fr auto;
+    gap: 0.75rem;
+    align-items: center;
+}
+
+.form-input, .form-select {
+    padding: 0.625rem 0.875rem;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    font-size: 0.875rem;
+}
+
+.table-responsive {
+    overflow-x: auto;
+}
+
+.admin-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.admin-table thead {
+    background: var(--background);
+}
+
+.admin-table th {
+    padding: 0.75rem 1rem;
+    text-align: left;
+    font-weight: 600;
+    color: var(--text-primary);
+    border-bottom: 2px solid var(--border-color);
+}
+
+.admin-table td {
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.admin-table tbody tr:hover {
+    background: var(--background);
+}
+
+.role-badge {
+    display: inline-block;
+    padding: 0.25rem 0.625rem;
+    border-radius: 12px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.role-consultant {
+    background: #dbeafe;
+    color: #1e40af;
+}
+
+.role-admin {
+    background: #fce7f3;
+    color: #9f1239;
+}
+
+.provider-badge {
+    display: inline-block;
+    padding: 0.25rem 0.625rem;
+    background: #f3f4f6;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: 500;
+}
+
+.status-badge {
+    display: inline-block;
+    padding: 0.25rem 0.625rem;
+    border-radius: 12px;
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+.status-active {
+    background: #d1fae5;
+    color: #065f46;
+}
+
+.status-inactive {
+    background: #fee2e2;
+    color: #991b1b;
+}
+
+.role-select {
+    padding: 0.375rem 0.5rem;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    font-size: 0.875rem;
+    cursor: pointer;
+}
+
+@media (max-width: 768px) {
+    .inline-form .form-row {
+        grid-template-columns: 1fr;
+    }
+    
+    .admin-table {
+        font-size: 0.875rem;
+    }
+    
+    .admin-table th,
+    .admin-table td {
+        padding: 0.5rem;
+    }
+}
+</style>
+{% endblock %}

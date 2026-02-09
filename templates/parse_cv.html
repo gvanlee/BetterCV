@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+
+{% block title %}{{ t.cv_parsing.title }} - {{ t.app_name }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h2>{{ t.cv_parsing.title }}</h2>
+    <a href="{{ url_for('list_consultants') }}" class="btn btn-secondary">{{ t.cv_parsing.back_button }}</a>
+</div>
+
+<div class="info-section">
+    <h3>{{ t.cv_parsing.how_it_works }}</h3>
+    <p>{{ t.cv_parsing.description }}</p>
+    <ul>
+        <li>{{ t.cv_parsing.step_1 }}</li>
+        <li>{{ t.cv_parsing.step_2 }}</li>
+        <li>{{ t.cv_parsing.step_3 }}</li>
+        <li>{{ t.cv_parsing.step_4 }}</li>
+    </ul>
+</div>
+
+<form method="POST" action="{{ url_for('parse_cv') }}" enctype="multipart/form-data" class="form">
+    <div class="form-section">
+        <h3>{{ t.cv_parsing.upload_title }}</h3>
+        
+        <div class="form-row">
+            <div class="form-group">
+                <label for="cv_file">{{ t.cv_parsing.file_label }} *</label>
+                <input type="file" id="cv_file" name="cv_file" accept=".pdf,.docx,.doc,.txt" required>
+                <small class="form-hint">{{ t.cv_parsing.file_hint }}</small>
+            </div>
+        </div>
+        
+        <div class="form-row">
+            <div class="form-group">
+                <label for="consultant_name">{{ t.cv_parsing.name_label }}</label>
+                <input type="text" id="consultant_name" name="consultant_name" placeholder="{{ t.cv_parsing.name_placeholder }}">
+                <small class="form-hint">{{ t.cv_parsing.name_hint }}</small>
+            </div>
+        </div>
+        
+        <div class="form-actions">
+            <button type="submit" class="btn btn-primary">{{ t.cv_parsing.parse_button }}</button>
+            <a href="{{ url_for('list_consultants') }}" class="btn btn-secondary">{{ t.buttons.cancel }}</a>
+        </div>
+    </div>
+</form>
+
+<div class="info-section">
+    <h3>{{ t.cv_parsing.requirements_title }}</h3>
+    <ul>
+        <li>{{ t.cv_parsing.requirement_1 }}</li>
+        <li>{{ t.cv_parsing.requirement_2 }}</li>
+        <li>{{ t.cv_parsing.requirement_3 }}</li>
+    </ul>
+    
+    <div class="alert alert-info">
+        <strong>{{ t.cv_parsing.privacy_title }}:</strong> {{ t.cv_parsing.privacy_note }}
+    </div>
+</div>
+{% endblock %}

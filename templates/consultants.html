@@ -5,7 +5,10 @@
 {% block content %}
 <div class="page-header">
     <h2>{{ t.consultants.title }}</h2>
-    <a href="{{ url_for('import_consultant') }}" class="btn btn-secondary">{{ t.consultants.import_button }}</a>
+    <div class="header-actions">
+        <a href="{{ url_for('parse_cv') }}" class="btn btn-primary">{{ t.cv_parsing.parse_cv_button }}</a>
+        <a href="{{ url_for('import_consultant') }}" class="btn btn-secondary">{{ t.consultants.import_button }}</a>
+    </div>
 </div>
 
 {% if consultants %}

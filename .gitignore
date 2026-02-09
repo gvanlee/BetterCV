@@ -14,5 +14,6 @@ ENV/
 *.log
 instance/
 .env
+.env.local
 data/
 .venv*

@@ -31,6 +31,37 @@ def init_database():
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     ''')
+    
+    # Users Table (for authentication)
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            email TEXT UNIQUE NOT NULL,
+            name TEXT,
+            oauth_provider TEXT,
+            oauth_id TEXT,
+            role TEXT NOT NULL DEFAULT 'consultant',
+            consultant_id INTEGER,
+            is_active BOOLEAN DEFAULT 1,
+            last_login TIMESTAMP,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (consultant_id) REFERENCES consultants(id)
+        )
+    ''')
+    
+    # User Whitelist Table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS user_whitelist (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            email TEXT UNIQUE NOT NULL,
+            role TEXT NOT NULL DEFAULT 'consultant',
+            invited_by INTEGER,
+            notes TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (invited_by) REFERENCES users(id)
+        )
+    ''')
 
     # Personal Information Table
     cursor.execute('''
@@ -190,6 +221,15 @@ def init_database():
             f"UPDATE {table} SET consultant_id = ? WHERE consultant_id IS NULL",
             (default_consultant_id,)
         )
+
+    # Create default admin in whitelist if no users exist
+    whitelist_count = conn.execute('SELECT COUNT(*) FROM user_whitelist').fetchone()[0]
+    if whitelist_count == 0:
+        # Add a placeholder admin email to whitelist - CHANGE THIS!
+        conn.execute('''
+            INSERT INTO user_whitelist (email, role, notes)
+            VALUES ('admin@example.com', 'admin', 'Default admin - CHANGE THIS EMAIL in user_whitelist table')
+        ''')
 
     conn.commit()
     conn.close()
