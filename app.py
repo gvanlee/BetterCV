@@ -7,7 +7,7 @@ from authlib.integrations.flask_client import OAuth
 from dotenv import load_dotenv
 import json
 import os
-import google.generativeai as genai
+from google import genai
 import PyPDF2
 import docx
 import io
@@ -367,8 +367,9 @@ def ensure_consultant_selected():
 
 # Configure Gemini AI - Set your API key as environment variable
 GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
+genai_client = None
 if GEMINI_API_KEY:
-    genai.configure(api_key=GEMINI_API_KEY)
+    genai_client = genai.Client(api_key=GEMINI_API_KEY)
 
 
 def extract_text_from_pdf(file_content):
@@ -413,12 +414,10 @@ def extract_text_from_file(file):
 
 def parse_cv_with_gemini(cv_text):
     """Parse CV text using Gemini AI and return structured data."""
-    if not GEMINI_API_KEY:
+    if not GEMINI_API_KEY or genai_client is None:
         return None, "Gemini API key not configured. Please set GEMINI_API_KEY environment variable."
     
     try:
-        model = genai.GenerativeModel('gemini-2.5-flash')
-        
         prompt = f"""
 Analyze the following CV/resume text and extract structured information 
   in JSON format.
@@ -507,7 +506,10 @@ CV Text:
 {cv_text}
 """
 
-        response = model.generate_content(prompt)
+        response = genai_client.models.generate_content(
+            model='gemini-2.5-flash',
+            contents=prompt,
+        )
         
         if not response.text:
             return None, "No response from Gemini AI"
