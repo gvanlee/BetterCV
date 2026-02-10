@@ -225,11 +225,13 @@ def init_database():
     # Create default admin in whitelist if no users exist
     whitelist_count = conn.execute('SELECT COUNT(*) FROM user_whitelist').fetchone()[0]
     if whitelist_count == 0:
-        # Add a placeholder admin email to whitelist - CHANGE THIS!
+        # Add a placeholder admin email to whitelist
+        default_admin_email = os.getenv('DEFAULT_ADMIN', 'admin@example.com')
+
         conn.execute('''
-            INSERT INTO user_whitelist (email, role, notes)
-            VALUES ('admin@example.com', 'admin', 'Default admin - CHANGE THIS EMAIL in user_whitelist table')
-        ''')
+                INSERT INTO user_whitelist (email, role, notes)
+                VALUES (?, 'admin', 'Default admin - CHANGE THIS EMAIL in user_whitelist table')
+            ''', (default_admin_email,))
 
     conn.commit()
     conn.close()

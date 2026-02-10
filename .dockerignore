@@ -7,7 +7,7 @@
 *.sqlite
 *.sqlite3
 env/
-venv/
+.venv_cv/
 ENV/
 .vscode/
 .idea/
@@ -15,5 +15,4 @@ ENV/
 .git/
 .gitignore
 README.md
-.env
 data/
