@@ -7,6 +7,7 @@ from authlib.integrations.flask_client import OAuth
 from dotenv import load_dotenv
 import json
 import os
+import uuid
 from google import genai
 import PyPDF2
 import docx
@@ -309,8 +310,16 @@ def admin_deactivate_user(user_id):
     if user_id == current_user.id:
         flash(get_translation('messages.cannot_deactivate_self'), 'error')
     else:
-        deactivate_user(user_id)
-        flash(get_translation('messages.user_deactivated'), 'success')
+        # Get the user being deactivated to check their role
+        conn = get_db_connection()
+        user = conn.execute('SELECT role FROM users WHERE id = ?', (user_id,)).fetchone()
+        conn.close()
+        
+        if user and user['role'] == 'admin':
+            flash(get_translation('messages.cannot_deactivate_admin'), 'error')
+        else:
+            deactivate_user(user_id)
+            flash(get_translation('messages.user_deactivated'), 'success')
     return redirect(url_for('admin_dashboard'))
 
 
@@ -379,6 +388,61 @@ GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
 genai_client = None
 if GEMINI_API_KEY:
     genai_client = genai.Client(api_key=GEMINI_API_KEY)
+
+
+# ==================== CV Parsing Data Storage ====================
+
+def get_cv_temp_dir():
+    """Get or create the temporary directory for CV parsing data."""
+    temp_dir = os.path.join(tempfile.gettempdir(), 'bettercv_cv_parsing')
+    os.makedirs(temp_dir, exist_ok=True)
+    return temp_dir
+
+
+def store_parsed_cv_data(parsed_data, cv_text_preview):
+    """Store parsed CV data in a temporary file and return the ID."""
+    cv_id = str(uuid.uuid4())
+    temp_dir = get_cv_temp_dir()
+    temp_file = os.path.join(temp_dir, f'{cv_id}.json')
+    
+    data_to_store = {
+        'parsed_data': parsed_data,
+        'cv_text_preview': cv_text_preview,
+        'created_at': datetime.now().isoformat()
+    }
+    
+    with open(temp_file, 'w', encoding='utf-8') as f:
+        json.dump(data_to_store, f)
+    
+    return cv_id
+
+
+def retrieve_parsed_cv_data(cv_id):
+    """Retrieve parsed CV data from temporary file."""
+    temp_dir = get_cv_temp_dir()
+    temp_file = os.path.join(temp_dir, f'{cv_id}.json')
+    
+    if not os.path.exists(temp_file):
+        return None, None
+    
+    try:
+        with open(temp_file, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        return data.get('parsed_data'), data.get('cv_text_preview')
+    except (json.JSONDecodeError, IOError):
+        return None, None
+
+
+def delete_parsed_cv_data(cv_id):
+    """Delete temporary CV parsing data file."""
+    temp_dir = get_cv_temp_dir()
+    temp_file = os.path.join(temp_dir, f'{cv_id}.json')
+    
+    try:
+        if os.path.exists(temp_file):
+            os.remove(temp_file)
+    except OSError:
+        pass  # Silently ignore if file can't be deleted
 
 
 def extract_text_from_pdf(file_content):
@@ -752,23 +816,46 @@ def import_consultant_data(conn, consultant_id, payload):
 @app.route('/consultants/import', methods=['GET', 'POST'])
 @admin_required
 def import_consultant():
-    """Import consultant data from JSON."""
+    """Import consultant data from JSON file or textarea."""
     conn = get_db_connection()
     consultants = get_consultants(conn)
+    prefilled_json = None
+
+    if request.method == 'GET':
+        # Check if we're prefilling from parsed CV
+        cv_id = session.get('parsed_cv_id')
+        if cv_id:
+            parsed_data, _ = retrieve_parsed_cv_data(cv_id)
+            if parsed_data:
+                prefilled_json = json.dumps(parsed_data, indent=2)
 
     if request.method == 'POST':
+        # Try to get JSON from textarea first, then from file
+        json_textarea = request.form.get('json_textarea', '').strip()
         json_file = request.files.get('json_file')
         import_mode = request.form.get('import_mode')
-        if not json_file:
+        
+        payload = None
+        
+        if json_textarea:
+            # Parse JSON from textarea
+            try:
+                payload = json.loads(json_textarea)
+            except json.JSONDecodeError as e:
+                conn.close()
+                flash(f"{get_translation('messages.import_invalid_json')}: {str(e)}", 'error')
+                return redirect(url_for('import_consultant'))
+        elif json_file:
+            # Parse JSON from uploaded file
+            try:
+                payload = json.load(json_file)
+            except json.JSONDecodeError:
+                conn.close()
+                flash(get_translation('messages.import_invalid_json'), 'error')
+                return redirect(url_for('import_consultant'))
+        else:
             conn.close()
             flash(get_translation('messages.import_file_required'), 'error')
-            return redirect(url_for('import_consultant'))
-
-        try:
-            payload = json.load(json_file)
-        except json.JSONDecodeError:
-            conn.close()
-            flash(get_translation('messages.import_invalid_json'), 'error')
             return redirect(url_for('import_consultant'))
 
         parsed_payload, error = parse_import_payload(payload)
@@ -819,11 +906,16 @@ def import_consultant():
         conn.close()
 
         session['consultant_id'] = consultant_id
+        # Clear parsed CV data if it exists
+        cv_id = session.pop('parsed_cv_id', None)
+        if cv_id:
+            delete_parsed_cv_data(cv_id)
+        
         flash(get_translation('messages.import_success'), 'success')
         return redirect(url_for('view_personal_info'))
 
     conn.close()
-    return render_template('import_consultant.html', consultants=consultants)
+    return render_template('import_consultant.html', consultants=consultants, prefilled_json=prefilled_json)
 
 
 @app.route('/consultants/parse-cv', methods=['GET', 'POST'])
@@ -860,9 +952,10 @@ def parse_cv():
                 parsed_data['consultant'] = {}
             parsed_data['consultant']['display_name'] = consultant_name
         
-        # Store parsed data in session for review
-        session['parsed_cv_data'] = parsed_data
-        session['cv_text_preview'] = cv_text[:500] + "..." if len(cv_text) > 500 else cv_text
+        # Store parsed data in temporary file and save ID in session
+        cv_text_preview = cv_text[:500] + "..." if len(cv_text) > 500 else cv_text
+        cv_id = store_parsed_cv_data(parsed_data, cv_text_preview)
+        session['parsed_cv_id'] = cv_id
         
         return redirect(url_for('review_parsed_cv'))
     
@@ -873,8 +966,13 @@ def parse_cv():
 @admin_required
 def review_parsed_cv():
     """Review AI-parsed CV data before importing."""
-    parsed_data = session.get('parsed_cv_data')
-    cv_text_preview = session.get('cv_text_preview', '')
+    cv_id = session.get('parsed_cv_id')
+    
+    if not cv_id:
+        flash(get_translation('messages.no_parsed_data'), 'error')
+        return redirect(url_for('parse_cv'))
+    
+    parsed_data, cv_text_preview = retrieve_parsed_cv_data(cv_id)
     
     if not parsed_data:
         flash(get_translation('messages.no_parsed_data'), 'error')
@@ -888,35 +986,20 @@ def review_parsed_cv():
 @app.route('/consultants/import-parsed-cv', methods=['POST'])
 @admin_required
 def import_parsed_cv():
-    """Import the reviewed AI-parsed CV data."""
-    parsed_data = session.get('parsed_cv_data')
+    """Redirect to import screen with AI-parsed CV data prefilled for review/editing.\"\"\"\n    cv_id = session.get('parsed_cv_id')
     
+    if not cv_id:
+        flash(get_translation('messages.no_parsed_data'), 'error')
+        return redirect(url_for('parse_cv'))
+    
+    # Verify the data exists
+    parsed_data, _ = retrieve_parsed_cv_data(cv_id)
     if not parsed_data:
         flash(get_translation('messages.no_parsed_data'), 'error')
         return redirect(url_for('parse_cv'))
     
-    conn = get_db_connection()
-    
-    # Create new consultant
-    display_name = parsed_data.get('consultant', {}).get('display_name', 'Unnamed Consultant')
-    result = conn.execute(
-        'INSERT INTO consultants (display_name) VALUES (?)',
-        (display_name,)
-    )
-    consultant_id = result.lastrowid
-    
-    # Import the data using existing function
-    import_consultant_data(conn, consultant_id, parsed_data)
-    conn.commit()
-    conn.close()
-    
-    # Clear session data
-    session.pop('parsed_cv_data', None)
-    session.pop('cv_text_preview', None)
-    
-    session['consultant_id'] = consultant_id
-    flash(get_translation('messages.cv_import_success'), 'success')
-    return redirect(url_for('view_personal_info'))
+    # Redirect to import screen with CV ID in session (will be prefilled in textarea)
+    return redirect(url_for('import_consultant'))
 
 
 @app.route('/consultants/delete/<int:consultant_id>', methods=['POST'])

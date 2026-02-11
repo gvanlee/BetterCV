@@ -3,6 +3,14 @@
 {% block title %}{{ t.cv_parsing.title }} - {{ t.app_name }}{% endblock %}
 
 {% block content %}
+<div class="loading-overlay" id="loadingOverlay">
+    <div class="loading-content">
+        <div class="loading-spinner"></div>
+        <div class="loading-text">{{ t.cv_parsing.processing }}</div>
+        <div class="loading-subtext">{{ t.cv_parsing.processing_note }}</div>
+    </div>
+</div>
+
 <div class="page-header">
     <h2>{{ t.cv_parsing.title }}</h2>
     <a href="{{ url_for('list_consultants') }}" class="btn btn-secondary">{{ t.cv_parsing.back_button }}</a>
@@ -19,7 +27,7 @@
     </ul>
 </div>
 
-<form method="POST" action="{{ url_for('parse_cv') }}" enctype="multipart/form-data" class="form">
+<form method="POST" action="{{ url_for('parse_cv') }}" enctype="multipart/form-data" class="form" id="parseForm">
     <div class="form-section">
         <h3>{{ t.cv_parsing.upload_title }}</h3>
         
@@ -40,7 +48,7 @@
         </div>
         
         <div class="form-actions">
-            <button type="submit" class="btn btn-primary">{{ t.cv_parsing.parse_button }}</button>
+            <button type="submit" class="btn btn-primary" id="submitBtn">{{ t.cv_parsing.parse_button }}</button>
             <a href="{{ url_for('list_consultants') }}" class="btn btn-secondary">{{ t.buttons.cancel }}</a>
         </div>
     </div>
@@ -58,4 +66,13 @@
         <strong>{{ t.cv_parsing.privacy_title }}:</strong> {{ t.cv_parsing.privacy_note }}
     </div>
 </div>
+
+<script>
+    document.getElementById('parseForm').addEventListener('submit', function(e) {
+        // Show loading overlay
+        document.getElementById('loadingOverlay').classList.add('active');
+        // Disable submit button to prevent double submission
+        document.getElementById('submitBtn').disabled = true;
+    });
+</script>
 {% endblock %}

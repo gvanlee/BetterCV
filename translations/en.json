@@ -256,9 +256,17 @@
     "whitelist_removed": "Email address removed from whitelist successfully!",
     "user_role_updated": "User role updated successfully!",
     "cannot_deactivate_self": "You cannot deactivate your own account.",
+    "cannot_deactivate_admin": "Admin accounts can only be deactivated by another admin. Contact another administrator to deactivate this account.",
     "user_deactivated": "User account has been deactivated.",
     "confirm_remove_whitelist": "Are you sure you want to remove this email from the whitelist?",
     "admin_only_consultants": "Only admins can access the consultants screen.",
+    "import_json_or_upload": "Enter JSON directly or upload a file:",
+    "import_json_paste": "Paste JSON",
+    "import_json_placeholder": "Paste your JSON data here or upload a file below...",
+    "import_json_paste_hint": "You can paste and edit JSON directly, or upload a file.",
+    "import_or": "OR",
+    "import_upload_file": "Upload JSON File",
+    "import_file_hint": "If you pasted JSON above, you can leave this empty.",
     "confirm_deactivate_user": "Are you sure you want to deactivate this user?"
   },
   
@@ -301,7 +309,9 @@
     "try_again": "Try Again",
     "current": "Current",
     "and_more": "+{count} more",
-    "original_text_preview": "Original CV Text (Preview)"
+    "original_text_preview": "Original CV Text (Preview)",
+    "processing": "Processing CV...",
+    "processing_note": "Please wait while AI analyzes your CV. This may take a minute."
   },
   
   "auth": {

@@ -216,8 +216,10 @@
     "personal_info_updated": "Persoonlijke informatie succesvol bijgewerkt!",
     "personal_info_saved": "Persoonlijke informatie succesvol opgeslagen!",
     "consultant_added": "Consultant succesvol toegevoegd!",
+    "consultant_deleted": "Consultant succesvol verwijderd!",
     "consultant_name_required": "Voer een consultanternaam in.",
     "consultant_not_found": "Consultant niet gevonden.",
+    "consultant_delete_last": "Kan de laatste consultant niet verwijderen. Er moet minstens één consultant bestaan.",
     "consultant_required": "Selecteer een consultant.",
     "import_file_required": "Kies een JSON-bestand om te importeren.",
     "import_invalid_json": "Het JSON-bestand kon niet worden gelezen.",
@@ -254,9 +256,17 @@
     "whitelist_removed": "E-mailadres succesvol verwijderd van whitelist!",
     "user_role_updated": "Gebruikersrol succesvol bijgewerkt!",
     "cannot_deactivate_self": "U kunt uw eigen account niet deactiveren.",
+    "cannot_deactivate_admin": "Admin-accounts kunnen alleen door een ander admin-account worden gedeactiveerd. Neem contact op met een ander beheerder om dit account te deactiveren.",
     "user_deactivated": "Gebruikersaccount is gedeactiveerd.",
     "confirm_remove_whitelist": "Weet u zeker dat u dit e-mailadres van de whitelist wilt verwijderen?",
     "admin_only_consultants": "Alleen beheerders hebben toegang tot het consultantscherm.",
+    "import_json_or_upload": "Voer JSON direct in of upload een bestand:",
+    "import_json_paste": "JSON plakken",
+    "import_json_placeholder": "Plak hier uw JSON-gegevens of upload onderstaand een bestand...",
+    "import_json_paste_hint": "U kunt JSON direct plakken en bewerken, of een bestand uploaden.",
+    "import_or": "OF",
+    "import_upload_file": "JSON-bestand uploaden",
+    "import_file_hint": "Als u hierboven JSON hebt geplakt, kunt u dit leeg laten.",
     "confirm_deactivate_user": "Weet u zeker dat u deze gebruiker wilt deactiveren?"
   },
   
@@ -299,7 +309,9 @@
     "try_again": "Opnieuw Proberen",
     "current": "Huidig",
     "and_more": "+{count} meer",
-    "original_text_preview": "Originele CV-tekst (Voorbeeld)"
+    "original_text_preview": "Originele CV-tekst (Voorbeeld)",
+    "processing": "CV wordt verwerkt...",
+    "processing_note": "Even geduld aub terwijl AI uw CV analyseert. Dit kan een minuut duren."
   },
   
   "auth": {

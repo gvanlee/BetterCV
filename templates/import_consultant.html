@@ -43,8 +43,24 @@
         </div>
 
         <div class="form-group">
-            <label for="json_file">{{ t.consultants.import_file }}</label>
-            <input type="file" id="json_file" name="json_file" accept="application/json" required>
+            <label>{{ t.consultants.import_file }}</label>
+            <div style="margin-bottom: 1rem; padding: 1rem; background-color: var(--background); border-radius: 6px; border: 1px solid var(--border-color);">
+                <p style="margin: 0 0 1rem 0; color: var(--text-secondary); font-size: 0.875rem;">{{ t.messages.import_json_or_upload }}</p>
+                
+                <div class="form-group" style="margin-bottom: 1rem;">
+                    <label for="json_textarea">{{ t.messages.import_json_paste }}</label>
+                    <textarea id="json_textarea" name="json_textarea" placeholder="{{ t.messages.import_json_placeholder }}" style="font-family: 'Courier New', monospace; font-size: 0.85rem; min-height: 200px;">{% if prefilled_json %}{{ prefilled_json }}{% endif %}</textarea>
+                    <small>{{ t.messages.import_json_paste_hint }}</small>
+                </div>
+                
+                <div style="text-align: center; color: var(--text-secondary); font-size: 0.875rem; margin: 1rem 0;">— {{ t.messages.import_or }} —</div>
+                
+                <div class="form-group">
+                    <label for="json_file">{{ t.messages.import_upload_file }}</label>
+                    <input type="file" id="json_file" name="json_file" accept="application/json">
+                    <small>{{ t.messages.import_file_hint }}</small>
+                </div>
+            </div>
         </div>
     </div>
 
