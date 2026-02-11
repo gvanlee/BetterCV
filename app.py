@@ -148,7 +148,8 @@ def logout():
 def auth_google():
     """Initiate Google OAuth"""
     # redirect_uri = url_for('auth_google_callback', _external=True)
-    redirect_uri = os.getenv('GOOGLE_OAUTH_REDIRECT_URI') or url_for('auth_google_callback', _external=True)
+    redirect_uri = (os.getenv('BASE_URL') + os.getenv('GOOGLE_OAUTH_REDIRECT_URI')) or url_for('auth_google_callback', _external=True)
+
     return google.authorize_redirect(redirect_uri)
 
 
@@ -200,7 +201,7 @@ def auth_google_callback():
 def auth_microsoft():
     """Initiate Microsoft OAuth"""
     # redirect_uri = url_for('auth_microsoft_callback', _external=True)
-    redirect_uri = os.getenv('MICROSOFT_OAUTH_REDIRECT_URI') or url_for('auth_microsoft_callback', _external=True)
+    redirect_uri = (os.getenv('BASE_URL') + os.getenv('MICROSOFT_OAUTH_REDIRECT_URI')) or url_for('auth_microsoft_callback', _external=True)
     return microsoft.authorize_redirect(redirect_uri)
 
 

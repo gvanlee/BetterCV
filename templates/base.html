@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}{{ t.app_name }}{% endblock %}</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" integrity="sha512-DTOQO9RWCH3ppGqcWaEA1BIZOC6xxalwEsw9c2QQeAIftl+Vegovlnee1c9QX4TctnWMn13TZye+giMm8e2LwA==" crossorigin="anonymous" referrerpolicy="no-referrer">
 </head>
 <body>
     <nav class="navbar">
@@ -24,22 +25,23 @@
                 <li><a href="{{ url_for('view_projects') }}">{{ t.nav.projects }}</a></li>
                 <li><a href="{{ url_for('list_consultants') }}">{{ t.nav.consultants }}</a></li>
                 {% if current_user.is_admin() %}
-                <li><a href="{{ url_for('admin_dashboard') }}" class="admin-link">🔐 {{ t.nav.admin }}</a></li>
+                <li><a href="{{ url_for('admin_dashboard') }}">{{ t.nav.admin }}</a></li>
                 {% endif %}
                 <li class="user-info">
                     <span class="user-email">{{ current_user.email }}</span>
-                    <a href="{{ url_for('logout') }}" class="btn-logout">{{ t.auth.logout }}</a>
+                    <a href="{{ url_for('logout') }}" class="btn-logout" aria-label="{{ t.auth.logout }}" title="{{ t.auth.logout }}">
+                        <i class="fa-solid fa-right-from-bracket" aria-hidden="true"></i>
+                    </a>
                 </li>
                 {% endif %}
 
                 <li class="language-selector">
-                    <select id="languageDropdown" onchange="changeLanguage(this.value)">
-                        {% for lang_code, lang_name in available_languages.items() %}
-                            <option value="{{ lang_code }}" {% if lang_code == current_lang %}selected{% endif %}>
-                                {{ lang_name }}
-                            </option>
-                        {% endfor %}
-                    </select>
+                    <a href="{{ url_for('set_language', lang='en') }}" class="language-flag {% if current_lang == 'en' %}is-active{% endif %}" aria-label="English" title="English">
+                        <img src="{{ url_for('static', filename='flags/gb.svg') }}" alt="English">
+                    </a>
+                    <a href="{{ url_for('set_language', lang='nl') }}" class="language-flag {% if current_lang == 'nl' %}is-active{% endif %}" aria-label="Nederlands" title="Nederlands">
+                        <img src="{{ url_for('static', filename='flags/nl.svg') }}" alt="Nederlands">
+                    </a>
                 </li>
             </ul>
         </div>
@@ -65,10 +67,5 @@
         </div>
     </footer>
 
-    <script>
-        function changeLanguage(lang) {
-            window.location.href = "{{ url_for('set_language', lang='$LANG') }}".replace('$LANG', lang);
-        }
-    </script>
 </body>
 </html>

@@ -6,6 +6,7 @@ Handles OAuth, user management, and access control
 from flask_login import UserMixin
 from database import get_db_connection
 from datetime import datetime
+import os
 import sqlite3
 
 
@@ -77,6 +78,25 @@ class User(UserMixin):
         return None
     
     @staticmethod
+    def _get_auto_whitelist_domains():
+        raw_domains = os.getenv('AUTO_WHITELIST_DOMAINS', '')
+        if not raw_domains:
+            return set()
+
+        domains = set()
+        for item in raw_domains.split(','):
+            domain = item.strip().lower()
+            if domain:
+                domains.add(domain)
+        return domains
+
+    @staticmethod
+    def _get_email_domain(email):
+        if not email or '@' not in email:
+            return None
+        return email.split('@', 1)[1].strip().lower()
+
+    @staticmethod
     def is_whitelisted(email):
         """Check if email is in whitelist"""
         conn = get_db_connection()
@@ -92,6 +112,13 @@ class User(UserMixin):
         """Create a new user from OAuth login"""
         # Check whitelist for role
         whitelist_entry = User.is_whitelisted(email)
+        if not whitelist_entry:
+            domain = User._get_email_domain(email)
+            auto_domains = User._get_auto_whitelist_domains()
+            if domain and domain in auto_domains:
+                add_to_whitelist(email, 'consultant', notes='Auto-whitelisted by domain')
+                whitelist_entry = User.is_whitelisted(email)
+
         if not whitelist_entry:
             return None
         
