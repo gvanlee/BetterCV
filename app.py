@@ -52,8 +52,8 @@ microsoft = oauth.register(
     access_token_url='https://login.microsoftonline.com/common/oauth2/v2.0/token',
     access_token_params=None,
     refresh_token_url=None,
-    client_kwargs={'scope': 'openid email profile'}  # ,
-    # server_metadata_url='https://login.microsoftonline.com/common/v2.0/.well-known/openid-configuration'
+    client_kwargs={'scope': 'openid email profile'},
+    server_metadata_url='https://login.microsoftonline.com/common/v2.0/.well-known/openid-configuration'
 )
 
 @login_manager.user_loader
