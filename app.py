@@ -357,6 +357,11 @@ def ensure_consultant_selected():
     }:
         return None
 
+    if current_user.is_authenticated and not current_user.is_admin():
+        if current_user.consultant_id:
+            session['consultant_id'] = current_user.consultant_id
+            return None
+
     conn = get_db_connection()
     consultant_id = resolve_current_consultant_id(conn)
     conn.close()
@@ -550,6 +555,9 @@ def index():
 @login_required
 def list_consultants():
     """List consultants and allow creation/import/export."""
+    if not current_user.is_admin():
+        flash(get_translation('messages.admin_only_consultants'), 'error')
+        return redirect(url_for('index'))
     conn = get_db_connection()
     consultants = get_consultants(conn)
     conn.close()
@@ -557,6 +565,7 @@ def list_consultants():
 
 
 @app.route('/consultants/add', methods=['POST'])
+@admin_required
 def add_consultant():
     """Add a new consultant."""
     display_name = request.form.get('display_name', '').strip()
@@ -579,6 +588,7 @@ def add_consultant():
 
 
 @app.route('/consultants/switch/<int:consultant_id>')
+@admin_required
 def switch_consultant(consultant_id):
     """Switch the active consultant."""
     conn = get_db_connection()
@@ -740,6 +750,7 @@ def import_consultant_data(conn, consultant_id, payload):
 
 
 @app.route('/consultants/import', methods=['GET', 'POST'])
+@admin_required
 def import_consultant():
     """Import consultant data from JSON."""
     conn = get_db_connection()
@@ -816,6 +827,7 @@ def import_consultant():
 
 
 @app.route('/consultants/parse-cv', methods=['GET', 'POST'])
+@admin_required
 def parse_cv():
     """Parse CV using AI and import consultant data."""
     if request.method == 'POST':
@@ -858,6 +870,7 @@ def parse_cv():
 
 
 @app.route('/consultants/review-parsed-cv')
+@admin_required
 def review_parsed_cv():
     """Review AI-parsed CV data before importing."""
     parsed_data = session.get('parsed_cv_data')
@@ -873,6 +886,7 @@ def review_parsed_cv():
 
 
 @app.route('/consultants/import-parsed-cv', methods=['POST'])
+@admin_required
 def import_parsed_cv():
     """Import the reviewed AI-parsed CV data."""
     parsed_data = session.get('parsed_cv_data')
@@ -906,6 +920,7 @@ def import_parsed_cv():
 
 
 @app.route('/consultants/delete/<int:consultant_id>', methods=['POST'])
+@admin_required
 def delete_consultant(consultant_id):
     """Delete a consultant."""
     conn = get_db_connection()
@@ -960,6 +975,7 @@ def delete_consultant(consultant_id):
 
 
 @app.route('/consultants/export/<int:consultant_id>')
+@admin_required
 def export_consultant(consultant_id):
     """Export a consultant's data as JSON."""
     conn = get_db_connection()

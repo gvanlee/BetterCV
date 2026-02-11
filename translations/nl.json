@@ -256,6 +256,7 @@
     "cannot_deactivate_self": "U kunt uw eigen account niet deactiveren.",
     "user_deactivated": "Gebruikersaccount is gedeactiveerd.",
     "confirm_remove_whitelist": "Weet u zeker dat u dit e-mailadres van de whitelist wilt verwijderen?",
+    "admin_only_consultants": "Alleen beheerders hebben toegang tot het consultantscherm.",
     "confirm_deactivate_user": "Weet u zeker dat u deze gebruiker wilt deactiveren?"
   },
   

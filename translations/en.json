@@ -258,6 +258,7 @@
     "cannot_deactivate_self": "You cannot deactivate your own account.",
     "user_deactivated": "User account has been deactivated.",
     "confirm_remove_whitelist": "Are you sure you want to remove this email from the whitelist?",
+    "admin_only_consultants": "Only admins can access the consultants screen.",
     "confirm_deactivate_user": "Are you sure you want to deactivate this user?"
   },
   
