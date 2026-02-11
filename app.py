@@ -986,7 +986,8 @@ def review_parsed_cv():
 @app.route('/consultants/import-parsed-cv', methods=['POST'])
 @admin_required
 def import_parsed_cv():
-    """Redirect to import screen with AI-parsed CV data prefilled for review/editing.\"\"\"\n    cv_id = session.get('parsed_cv_id')
+    """Redirect to import screen with AI-parsed CV data prefilled for review/editing."""    
+    cv_id = session.get('parsed_cv_id')
     
     if not cv_id:
         flash(get_translation('messages.no_parsed_data'), 'error')
@@ -1060,7 +1061,7 @@ def delete_consultant(consultant_id):
 @app.route('/consultants/export/<int:consultant_id>')
 @admin_required
 def export_consultant(consultant_id):
-    """Export a consultant's data as JSON."""
+    """Export a consultants data as JSON."""
     conn = get_db_connection()
     consultant = conn.execute(
         'SELECT id, display_name FROM consultants WHERE id = ?',
