@@ -19,16 +19,15 @@
         </div>
 
         {% if all_consultants %}
-        <div class="card-grid">
+        <div class="consultant-list">
             {% for consultant in all_consultants %}
-            <div class="card">
-                <h3>{{ consultant['display_name'] }}</h3>
-                {% if current_consultant and consultant['id'] == current_consultant['id'] %}
-                <p class="text-muted">{{ t.consultants.current_label }}</p>
-                {% endif %}
-                <div class="card-actions">
-                    <a href="{{ url_for('switch_consultant', consultant_id=consultant['id']) }}" class="btn btn-primary">{{ t.consultants.switch_button }}</a>
-                    <a href="{{ url_for('export_consultant', consultant_id=consultant['id']) }}" class="btn btn-link">{{ t.consultants.export_button }}</a>
+            {% set is_current = current_consultant and consultant['id'] == current_consultant['id'] %}
+            <div class="consultant-row">
+                <span class="consultant-name{% if is_current %} is-active{% endif %}">{{ consultant['display_name'] }}</span>
+                <div class="consultant-actions">
+                    {% if not is_current %}
+                    <a href="{{ url_for('switch_consultant', consultant_id=consultant['id']) }}" class="btn btn-small btn-primary">{{ t.consultants.switch_button }}</a>
+                    {% endif %}
                     <form method="POST" action="{{ url_for('delete_consultant', consultant_id=consultant['id']) }}"
                           style="display: inline;" onsubmit="return confirm('{{ t.messages.delete_confirm_consultant }}');">
                         <button type="submit" class="btn btn-small btn-danger">{{ t.buttons.delete }}</button>
@@ -306,10 +305,55 @@
     cursor: pointer;
 }
 
+.consultant-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.consultant-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: var(--background);
+}
+
+.consultant-name {
+    padding: 0.2rem 0.5rem;
+    border-radius: 6px;
+    border: 1px solid transparent;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.consultant-name.is-active {
+    border-color: var(--primary-color);
+}
+
+.consultant-actions {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+}
+
 @media (max-width: 768px) {
     .admin-section-header {
         flex-direction: column;
         align-items: flex-start;
+    }
+
+    .consultant-row {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .consultant-actions {
+        width: 100%;
+        justify-content: flex-end;
     }
 
     .inline-form .form-row {
