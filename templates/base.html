@@ -27,8 +27,7 @@
                 <li><a href="{{ url_for('admin_dashboard') }}">{{ t.nav.admin }}</a></li>
                 {% endif %}
                 <li class="user-info">
-                    <span class="user-email">{{ current_user.email }}</span>
-                    <a href="{{ url_for('logout') }}" class="btn-logout" aria-label="{{ t.auth.logout }}" title="{{ t.auth.logout }}">
+                    <a href="{{ url_for('logout') }}" class="btn-logout" aria-label="{{ t.auth.logout }}" title="{{ t.auth.logout }}: {{ current_user.email }}">
                         <i class="fa-solid fa-right-from-bracket" aria-hidden="true"></i>
                     </a>
                 </li>
