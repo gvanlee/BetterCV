@@ -226,6 +226,7 @@ def auth_microsoft_callback():
         oauth_id = user_info.get('id')
         
         if not email:
+            print(f"Microsoft OAuth response missing email: {user_info}, json: {resp.text}")
             flash(get_translation('messages.oauth_failed'), 'error')
             return redirect(url_for('login'))
         
