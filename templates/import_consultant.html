@@ -5,7 +5,7 @@
 {% block content %}
 <div class="page-header">
     <h2>{{ t.consultants.import_title }}</h2>
-    <a href="{{ url_for('list_consultants') }}" class="btn btn-secondary">{{ t.consultants.back_button }}</a>
+    <a href="{{ url_for('admin_dashboard') }}" class="btn btn-secondary">{{ t.consultants.back_button }}</a>
 </div>
 
 <form method="POST" enctype="multipart/form-data" class="form">
@@ -66,7 +66,7 @@
 
     <div class="form-actions">
         <button type="submit" class="btn btn-primary">{{ t.consultants.import_button }}</button>
-        <a href="{{ url_for('list_consultants') }}" class="btn btn-secondary">{{ t.buttons.cancel }}</a>
+        <a href="{{ url_for('admin_dashboard') }}" class="btn btn-secondary">{{ t.buttons.cancel }}</a>
     </div>
 </form>
 

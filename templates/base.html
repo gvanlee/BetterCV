@@ -24,7 +24,6 @@
                 <li><a href="{{ url_for('view_skills') }}">{{ t.nav.skills }}</a></li>
                 <li><a href="{{ url_for('view_projects') }}">{{ t.nav.projects }}</a></li>
                 {% if current_user.is_admin() %}
-                <li><a href="{{ url_for('list_consultants') }}">{{ t.nav.consultants }}</a></li>
                 <li><a href="{{ url_for('admin_dashboard') }}">{{ t.nav.admin }}</a></li>
                 {% endif %}
                 <li class="user-info">

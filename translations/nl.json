@@ -207,7 +207,7 @@
     "import_file": "JSON-bestand",
     "import_replace_hint": "Importeren vervangt de bestaande gegevens van de consultant.",
     "import_name_hint": "Laat leeg om de naam uit het JSON-bestand te gebruiken.",
-    "back_button": "Terug naar Consultants",
+    "back_button": "Terug naar Beheer",
     "no_data": "Nog geen consultants toegevoegd.",
     "unnamed": "Naamloze Consultant"
   },
@@ -281,7 +281,7 @@
   "cv_parsing": {
     "title": "CV Analyseren met AI",
     "parse_cv_button": "CV Parseren met AI",
-    "back_button": "Terug naar Consultants",
+    "back_button": "Terug naar Beheer",
     "how_it_works": "Hoe het werkt",
     "description": "Upload uw CV en laat AI de informatie extraheren en structureren. Het systeem analyseert automatisch uw CV en creëert een nieuw consultantprofiel.",
     "step_1": "Upload uw CV-bestand (PDF, DOCX, of TXT)",

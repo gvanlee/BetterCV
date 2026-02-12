@@ -13,7 +13,7 @@
 
 <div class="page-header">
     <h2>{{ t.cv_parsing.title }}</h2>
-    <a href="{{ url_for('list_consultants') }}" class="btn btn-secondary">{{ t.cv_parsing.back_button }}</a>
+    <a href="{{ url_for('admin_dashboard') }}" class="btn btn-secondary">{{ t.cv_parsing.back_button }}</a>
 </div>
 
 <div class="info-section">
@@ -49,7 +49,7 @@
         
         <div class="form-actions">
             <button type="submit" class="btn btn-primary" id="submitBtn">{{ t.cv_parsing.parse_button }}</button>
-            <a href="{{ url_for('list_consultants') }}" class="btn btn-secondary">{{ t.buttons.cancel }}</a>
+            <a href="{{ url_for('admin_dashboard') }}" class="btn btn-secondary">{{ t.buttons.cancel }}</a>
         </div>
     </div>
 </form>

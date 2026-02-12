@@ -376,7 +376,7 @@ def ensure_consultant_selected():
     conn.close()
 
     if consultant_id is None:
-        return redirect(url_for('list_consultants'))
+        return redirect(url_for('admin_dashboard'))
 
     return None
 
@@ -618,14 +618,11 @@ def index():
 @app.route('/consultants')
 @login_required
 def list_consultants():
-    """List consultants and allow creation/import/export."""
+    """Redirect to admin dashboard (consultants are managed there)."""
     if not current_user.is_admin():
         flash(get_translation('messages.admin_only_consultants'), 'error')
         return redirect(url_for('index'))
-    conn = get_db_connection()
-    consultants = get_consultants(conn)
-    conn.close()
-    return render_template('consultants.html', consultants=consultants)
+    return redirect(url_for('admin_dashboard'))
 
 
 @app.route('/consultants/add', methods=['POST'])
@@ -635,7 +632,7 @@ def add_consultant():
     display_name = request.form.get('display_name', '').strip()
     if not display_name:
         flash(get_translation('messages.consultant_name_required'), 'error')
-        return redirect(url_for('list_consultants'))
+        return redirect(url_for('admin_dashboard'))
 
     conn = get_db_connection()
     result = conn.execute(
@@ -664,7 +661,7 @@ def switch_consultant(consultant_id):
 
     if not existing:
         flash(get_translation('messages.consultant_not_found'), 'error')
-        return redirect(url_for('list_consultants'))
+        return redirect(url_for('admin_dashboard'))
 
     session['consultant_id'] = consultant_id
     return redirect(request.referrer or url_for('index'))
@@ -1018,14 +1015,14 @@ def delete_consultant(consultant_id):
     if not consultant:
         conn.close()
         flash(get_translation('messages.consultant_not_found'), 'error')
-        return redirect(url_for('list_consultants'))
+        return redirect(url_for('admin_dashboard'))
     
     # Prevent deleting if this is the only consultant
     consultant_count = conn.execute('SELECT COUNT(*) FROM consultants').fetchone()[0]
     if consultant_count <= 1:
         conn.close()
         flash(get_translation('messages.consultant_delete_last'), 'error')
-        return redirect(url_for('list_consultants'))
+        return redirect(url_for('admin_dashboard'))
     
     # If deleting current consultant, switch to another one
     current_consultant_id = session.get('consultant_id')
@@ -1055,7 +1052,7 @@ def delete_consultant(consultant_id):
     conn.close()
     
     flash(get_translation('messages.consultant_deleted'), 'success')
-    return redirect(url_for('list_consultants'))
+    return redirect(url_for('admin_dashboard'))
 
 
 @app.route('/consultants/export/<int:consultant_id>')
@@ -1071,7 +1068,7 @@ def export_consultant(consultant_id):
     if not consultant:
         conn.close()
         flash(get_translation('messages.consultant_not_found'), 'error')
-        return redirect(url_for('list_consultants'))
+        return redirect(url_for('admin_dashboard'))
 
     payload = {
         'version': 1,

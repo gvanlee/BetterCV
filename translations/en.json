@@ -207,7 +207,7 @@
     "import_file": "JSON file",
     "import_replace_hint": "Importing will replace the consultant's existing data.",
     "import_name_hint": "Leave blank to use the name from the JSON file.",
-    "back_button": "Back to Consultants",
+    "back_button": "Back to Admin",
     "no_data": "No consultants added yet.",
     "unnamed": "Unnamed Consultant"
   },
@@ -281,7 +281,7 @@
   "cv_parsing": {
     "title": "Parse CV with AI",
     "parse_cv_button": "Parse CV with AI",
-    "back_button": "Back to Consultants",
+    "back_button": "Back to Admin",
     "how_it_works": "How it works",
     "description": "Upload your CV and let AI extract and structure the information for you. The system will automatically parse your resume and create a new consultant profile.",
     "step_1": "Upload your CV file (PDF, DOCX, or TXT)",
