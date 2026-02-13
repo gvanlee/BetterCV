@@ -9,8 +9,8 @@
 </div>
 
 {% if info %}
-<div class="info-card">
-    <div class="info-section">
+<div class="card-grid">
+    <div class="card">
         <h3>{{ t.personal_info.basic_info }}</h3>
         <div class="info-grid">
             <div class="info-item">
@@ -29,7 +29,7 @@
     </div>
 
     {% if info['address'] or info['city'] or info['state'] %}
-    <div class="info-section">
+    <div class="card">
         <h3>{{ t.personal_info.address_section }}</h3>
         <p>
             {% if info['address'] %}{{ info['address'] }}<br>{% endif %}
@@ -42,7 +42,7 @@
     {% endif %}
 
     {% if info['linkedin_url'] or info['github_url'] or info['portfolio_url'] %}
-    <div class="info-section">
+    <div class="card">
         <h3>{{ t.personal_info.online_presence }}</h3>
         <div class="info-grid">
             {% if info['linkedin_url'] %}
@@ -68,7 +68,7 @@
     {% endif %}
 
     {% if info['professional_summary'] %}
-    <div class="info-section">
+    <div class="card">
         <h3>{{ t.personal_info.professional_summary }}</h3>
         <p>{{ info['professional_summary'] }}</p>
     </div>

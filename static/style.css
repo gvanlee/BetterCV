@@ -415,7 +415,7 @@ body {
 .info-card {
     background: var(--card-background);
     border-radius: 8px;
-    padding: 2rem;
+    padding: 1rem;
     box-shadow: var(--shadow);
 }
 
