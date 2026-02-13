@@ -68,9 +68,13 @@
     {% endif %}
 
     {% if info['professional_summary'] %}
-    <div class="card-xl">
+    <div class="card">
         <h3>{{ t.personal_info.professional_summary }}</h3>
-        <p>{{ info['professional_summary'] }}</p>
+        <div class="info-grid">
+            <div class="info-item">
+                <p>{{ info['professional_summary'] }}</p>
+            </div>
+        </div>
     </div>
     {% endif %}
 </div>
