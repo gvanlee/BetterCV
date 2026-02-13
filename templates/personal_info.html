@@ -25,47 +25,41 @@
                 <label>{{ t.personal_info.phone }}:</label>
                 <span>{{ info['phone'] or t.common.na }}</span>
             </div>
-        </div>
-    </div>
-
-    {% if info['address'] or info['city'] or info['state'] %}
-    <div class="card">
-        <h3>{{ t.personal_info.address_section }}</h3>
-        <p>
-            {% if info['address'] %}{{ info['address'] }}<br>{% endif %}
-            {% if info['city'] %}{{ info['city'] }}{% endif %}
-            {% if info['state'] %}, {{ info['state'] }}{% endif %}
-            {% if info['zip_code'] %} {{ info['zip_code'] }}{% endif %}
-            {% if info['country'] %}<br>{{ info['country'] }}{% endif %}
-        </p>
-    </div>
-    {% endif %}
-
-    {% if info['linkedin_url'] or info['github_url'] or info['portfolio_url'] %}
-    <div class="card">
-        <h3>{{ t.personal_info.online_presence }}</h3>
-        <div class="info-grid">
-            {% if info['linkedin_url'] %}
-            <div class="info-item">
-                <label>LinkedIn:</label>
-                <span><a href="{{ info['linkedin_url'] }}" target="_blank">{{ info['linkedin_url'] }}</a></span>
-            </div>
+            <br>
+            {% if info['address'] or info['city'] or info['state'] %}
+                <h3>{{ t.personal_info.address_section }}</h3>
+                <div class="info-item">
+                    {% if info['address'] %}{{ info['address'] }}<br>{% endif %}
+                    {% if info['zip_code'] %} {{ info['zip_code'] }}{% endif %} {% if info['city'] %}{{ info['city'] }}<br>{% endif %}
+                    {% if info['state'] %}, {{ info['state'] }}{% endif %} 
+                    {% if info['country'] %}<br>{{ info['country'] }}{% endif %}
+                </div>
+                <br>
             {% endif %}
-            {% if info['github_url'] %}
-            <div class="info-item">
-                <label>GitHub:</label>
-                <span><a href="{{ info['github_url'] }}" target="_blank">{{ info['github_url'] }}</a></span>
-            </div>
-            {% endif %}
-            {% if info['portfolio_url'] %}
-            <div class="info-item">
-                <label>{{ t.personal_info.portfolio_url }}:</label>
-                <span><a href="{{ info['portfolio_url'] }}" target="_blank">{{ info['portfolio_url'] }}</a></span>
-            </div>
+
+            {% if info['linkedin_url'] or info['github_url'] or info['portfolio_url'] %}
+                <h3>{{ t.personal_info.online_presence }}</h3>
+                {% if info['linkedin_url'] %}
+                <div class="info-item">
+                    <label>LinkedIn:</label>
+                    <span><a href="{{ info['linkedin_url'] }}" target="_blank">{{ info['linkedin_url'] }}</a></span>
+                </div>
+                {% endif %}
+                {% if info['github_url'] %}
+                <div class="info-item">
+                    <label>GitHub:</label>
+                    <span><a href="{{ info['github_url'] }}" target="_blank">{{ info['github_url'] }}</a></span>
+                </div>
+                {% endif %}
+                {% if info['portfolio_url'] %}
+                <div class="info-item">
+                    <label>{{ t.personal_info.portfolio_url }}:</label>
+                    <span><a href="{{ info['portfolio_url'] }}" target="_blank">{{ info['portfolio_url'] }}</a></span>
+                </div>
+                {% endif %}
             {% endif %}
         </div>
     </div>
-    {% endif %}
 
     {% if info['professional_summary'] %}
     <div class="card">
