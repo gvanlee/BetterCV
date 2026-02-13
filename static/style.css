@@ -204,6 +204,9 @@ body {
     .card-grid-xl {
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
+    .card-xl {
+        -ms-grid-column-span: 2;
+    }
 }
 
 @media (min-width: 1400px) {
@@ -213,6 +216,9 @@ body {
 
     .card-grid-xl {
         grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+    .card-xl {
+        -ms-grid-column-span: 3;
     }
 }
 
@@ -256,6 +262,7 @@ body {
     text-decoration: none;
     cursor: pointer;
     transition: all 0.2s;
+    height: 1.25rem
 }
 
 .btn-primary {
