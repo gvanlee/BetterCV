@@ -7,7 +7,7 @@
 
 :root {
     --primary-color: #f5af02;
-    --primary-hover: #1d4ed8;
+    --primary-hover: #fefead;;
     --secondary-color: #ffffff;
     --danger-color: #dc2626;
     --danger-hover: #b91c1c;
@@ -16,6 +16,8 @@
     --card-background: #202020;
     --text-primary: #ffffff;
     --text-secondary: #a0a0a0;
+    --button-primary: #171717;
+    --button-secondary: #202020;
     --border-color: #e2e8f0;
     --shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
     --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
@@ -243,7 +245,7 @@ body {
 
 .btn-primary {
     background-color: var(--primary-color);
-    color: white;
+    color: var(--button-primary);
 }
 
 .btn-primary:hover {
@@ -252,7 +254,7 @@ body {
 
 .btn-secondary {
     background-color: var(--secondary-color);
-    color: white;
+    color: var(--button-secondary);
 }
 
 .btn-secondary:hover {
@@ -884,8 +886,8 @@ footer p {
     padding: 0.875rem 1.5rem;
     border: 2px solid var(--border-color);
     border-radius: 8px;
-    background: white;
-    color: var(--text-primary);
+    background: var(--primary-color);
+    color: var(--button-primary);
     font-weight: 500;
     font-size: 1rem;
     cursor: pointer;
@@ -894,7 +896,7 @@ footer p {
 
 .btn-oauth:hover {
     border-color: var(--primary-color);
-    background: var(--background);
+    background: var(--primary-hover);
     transform: translateY(-1px);
     box-shadow: var(--shadow);
 }
