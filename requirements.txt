@@ -3,6 +3,7 @@ Werkzeug
 Flask-Login
 Authlib
 google-genai
+groq
 PyPDF2
 python-docx
 markdown

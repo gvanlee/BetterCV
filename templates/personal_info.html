@@ -9,7 +9,7 @@
 </div>
 
 {% if info %}
-<div class="card-grid">
+<div class="card-grid-xl">
     <div class="card">
         <h3>{{ t.personal_info.basic_info }}</h3>
         <div class="info-grid">
@@ -31,7 +31,7 @@
                 <div class="info-item">
                     {% if info['address'] %}{{ info['address'] }}<br>{% endif %}
                     {% if info['zip_code'] %} {{ info['zip_code'] }}{% endif %} {% if info['city'] %}{{ info['city'] }}<br>{% endif %}
-                    {% if info['state'] %}, {{ info['state'] }}{% endif %} 
+                    {% if info['state'] %} {{ info['state'] }}{% endif %} 
                     {% if info['country'] %}<br>{{ info['country'] }}{% endif %}
                 </div>
                 <br>

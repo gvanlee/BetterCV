@@ -9,57 +9,71 @@
 </div>
 
 {% if projects %}
-<div class="list-container">
+<div class="card-grid-xl">
     {% for project in projects %}
-    <div class="list-item">
-        <div class="list-item-header">
-            <div>
-                <h3>{{ project['project_name'] }}</h3>
-                {% if project['role'] %}
-                <p class="role">{{ t.projects.role }}: {{ project['role'] }}</p>
-                {% endif %}
-                {% if project['start_date'] or project['end_date'] %}
-                <p class="date-range">
-                    {{ project['start_date'] or t.common.na }} - {{ project['end_date'] or t.projects.ongoing }}
-                </p>
-                {% endif %}
-                {% if project['technologies_used'] %}
-                <p class="technologies">
-                    <strong>{{ t.common.technologies }}:</strong> {{ project['technologies_used'] }}
-                </p>
-                {% endif %}
+    <div class="card">
+        <div class="card-actions">
+            <a href="{{ url_for('edit_project', id=project['id']) }}" class="btn btn-small">{{ t.buttons.edit }}</a>
+            <form method="POST" action="{{ url_for('delete_project', id=project['id']) }}" 
+                  onsubmit="return confirm('{{ t.messages.delete_confirm }}');">
+                <button type="submit" class="btn btn-small btn-danger">{{ t.buttons.delete }}</button>
+            </form>
+        </div>
+        <h3>{{ project['project_name'] }}</h3>
+        <div class="info-grid">
+            {% if project['role'] %}
+            <div class="info-item">
+                <label>{{ t.projects.role }}:</label>
+                <span>{{ project['role'] }}</span>
             </div>
-            <div class="list-item-actions">
-                <a href="{{ url_for('edit_project', id=project['id']) }}" class="btn btn-small">{{ t.buttons.edit }}</a>
-                <form method="POST" action="{{ url_for('delete_project', id=project['id']) }}" 
-                      style="display: inline;" onsubmit="return confirm('{{ t.messages.delete_confirm }}');">
-                    <button type="submit" class="btn btn-small btn-danger">{{ t.buttons.delete }}</button>
-                </form>
+            {% endif %}
+            {% if project['start_date'] or project['end_date'] %}
+            <div class="info-item">
+                <label>{{ t.projects.period }}:</label>
+                <span>{{ project['start_date'] or t.common.na }} - {{ project['end_date'] or t.projects.ongoing }}</span>
             </div>
+            {% endif %}
+            {% if project['technologies_used'] %}
+            <div class="info-item">
+                <label>{{ t.common.technologies }}:</label>
+                <span>{{ project['technologies_used'] }}</span>
+            </div>
+            {% endif %}
         </div>
         
         {% if project['description'] %}
-        <div class="list-item-content">
-            <h4>{{ t.common.description }}:</h4>
-            <p>{{ project['description'] }}</p>
+        <br>
+        <h4>{{ t.common.description }}:</h4>
+        <div class="info-grid">
+            <div class="info-item">
+                <p>{{ project['description'] }}</p>
+            </div>
         </div>
         {% endif %}
         
         {% if project['achievements'] %}
-        <div class="list-item-content">
-            <h4>{{ t.projects.achievements }}:</h4>
-            <p>{{ project['achievements'] }}</p>
+        <br>
+        <h4>{{ t.projects.achievements }}:</h4>
+        <div class="info-grid">
+            <div class="info-item">
+                <p>{{ project['achievements'] }}</p>
+            </div>
         </div>
         {% endif %}
         
         {% if project['project_url'] or project['github_url'] %}
-        <div class="list-item-content">
-            <h4>{{ t.projects.links }}:</h4>
+        <br>
+        <h4>{{ t.projects.links }}:</h4>
+        <div class="info-grid">
             {% if project['project_url'] %}
-            <p><a href="{{ project['project_url'] }}" target="_blank">{{ t.projects.project_url_link }}</a></p>
+            <div class="info-item">
+                <a href="{{ project['project_url'] }}" target="_blank">{{ t.projects.project_url_link }}</a>
+            </div>
             {% endif %}
             {% if project['github_url'] %}
-            <p><a href="{{ project['github_url'] }}" target="_blank">{{ t.projects.github_repo }}</a></p>
+            <div class="info-item">
+                <a href="{{ project['github_url'] }}" target="_blank">{{ t.projects.github_repo }}</a>
+            </div>
             {% endif %}
         </div>
         {% endif %}

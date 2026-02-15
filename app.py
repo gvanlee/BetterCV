@@ -9,6 +9,7 @@ import json
 import os
 import uuid
 from google import genai
+from groq import Groq
 import PyPDF2
 import docx
 import io
@@ -48,9 +49,11 @@ microsoft = oauth.register(
     name='microsoft',
     client_id=os.getenv('MICROSOFT_CLIENT_ID'),
     client_secret=os.getenv('MICROSOFT_CLIENT_SECRET'),
-    authorize_url='https://login.microsoftonline.com/common/oauth2/v2.0/authorize',
+    # authorize_url='https://login.microsoftonline.com/common/oauth2/v2.0/authorize',
+    authorize_url='https://login.microsoftonline.com/organizations/oauth2/v2.0/authorize',
     authorize_params=None,
-    access_token_url='https://login.microsoftonline.com/common/oauth2/v2.0/token',
+    # access_token_url='https://login.microsoftonline.com/common/oauth2/v2.0/token',
+    access_token_url='https://login.microsoftonline.com/organizations/oauth2/v2.0/token',
     access_token_params=None,
     refresh_token_url=None,
     client_kwargs={
@@ -394,6 +397,11 @@ genai_client = None
 if GEMINI_API_KEY:
     genai_client = genai.Client(api_key=GEMINI_API_KEY)
 
+# Configure Groq AI
+GROQ_API_KEY = os.getenv('GROQ_API_KEY')
+groq_client = None
+if GROQ_API_KEY:
+    groq_client = Groq(api_key=GROQ_API_KEY)
 
 # ==================== CV Parsing Data Storage ====================
 
@@ -490,13 +498,9 @@ def extract_text_from_file(file):
         return "Unsupported file type. Please upload PDF, DOCX, or TXT files."
 
 
-def parse_cv_with_gemini(cv_text):
-    """Parse CV text using Gemini AI and return structured data."""
-    if not GEMINI_API_KEY or genai_client is None:
-        return None, "Gemini API key not configured. Please set GEMINI_API_KEY environment variable."
-    
-    try:
-        prompt = f"""
+def get_cv_parse_prompt(cv_text):
+    """Generate the prompt for CV parsing."""
+    return f"""
 Analyze the following CV/resume text and extract structured information 
   in JSON format.
 Keep in mind that the CV may have varying formats and may not explicitly 
@@ -519,6 +523,8 @@ The JSON should match this exact schema:
     "email": "email@example.com",
     "phone": "Phone Number",
     "address": "Full Address",
+    "city": "City",
+    "country": "Country",
     "summary": "Professional summary or objective"
   }},
   "work_experience": [
@@ -528,7 +534,11 @@ The JSON should match this exact schema:
       "location": "City, Country",
       "start_date": "YYYY-MM-DD",
       "end_date": "YYYY-MM-DD or null for current",
-      "description": "Job description and achievements"
+      "star_situation": "The context and situation of the role/project",
+      "star_tasks": "The specific tasks and responsibilities",
+      "star_actions": "The specific actions taken to solve problems or deliver results",
+      "star_results": "The quantifiable results and achievements",
+      "description": "Any remaining details not captured in STAR"
     }}
   ],
   "education": [
@@ -562,7 +572,7 @@ The JSON should match this exact schema:
   ],
   "certifications": [
     {{
-      "name": "Certification Name",
+      "name": "Certification Name or course Name",
       "issuing_organization": "Issuing Organization",
       "issue_date": "YYYY-MM-DD",
       "expiry_date": "YYYY-MM-DD or null",
@@ -573,44 +583,83 @@ The JSON should match this exact schema:
 }}
 
 Rules:
-- Use null for missing dates or empty end_dates for current positions
-- Format dates as YYYY-MM-DD or YYYY-MM if day is unknown, or YYYY if only year
+- Keep the end result in Dutch if the source is in Dutch, 
+    Translate English CVs into Dutch. Do not translate English
+    verbs if they are used in a Dutch CV.
+- If bulletpoints are used in the CV, use markdown formatting in 
+    the JSON output to preserve the bullet points in the description fields.
+- Dates are normally formatted as European dates, so DD-MM-YYYY,
+  if abbreviated they are usually in the format "Okt 2023" or "Oct 2023", 
+  in this case, "Oct 2023" should be interpreted as "2023-10-01" 
+  (use the first day of the month when day is not specified).
+- Format dates as YYYY-MM-DD or YYYY-MM-01 if day is unknown, or YYYY-01-01 if only year
 - Extract only information that is explicitly mentioned in the CV
 - For skills, group similar skills into logical categories
 - Return only valid JSON, no additional text or explanations
-- If information is missing, use null or omit the field, do not use "None"
+- If information is missing, use an empty string or omit the field, do not use "None" or Null
 
 CV Text:
 {cv_text}
 """
 
-        response = genai_client.models.generate_content(
-            model='gemini-2.5-flash',
-            contents=prompt,
-        )
+
+def parse_cv_with_ai(cv_text, provider='gemini'):
+    """Parse CV text using chosen AI provider and return structured data."""
+    prompt = get_cv_parse_prompt(cv_text)
+    
+    if provider == 'gemini':
+        if not GEMINI_API_KEY or genai_client is None:
+            return None, "Gemini API key not configured."
         
-        if not response.text:
-            return None, "No response from Gemini AI"
-            
-        # Try to parse the JSON response
         try:
-            # Clean up the response text (remove markdown formatting if present)
-            json_text = response.text.strip()
-            if json_text.startswith('```json'):
-                json_text = json_text[7:]
-            if json_text.endswith('```'):
-                json_text = json_text[:-3]
+            response = genai_client.models.generate_content(
+                model='gemini-2.0-flash',
+                contents=prompt
+            )
+            if not response.text:
+                return None, "No response from Gemini AI"
+            json_text = response.text
+        except Exception as e:
+            return None, f"Gemini error: {str(e)}"
             
-            parsed_data = json.loads(json_text)
-            return parsed_data, None
+    elif provider == 'groq':
+        if not GROQ_API_KEY or groq_client is None:
+            return None, "Groq API key not configured."
             
-        except json.JSONDecodeError as e:
-            return None, f"Failed to parse AI response as JSON: {str(e)}"
-            
-    except Exception as e:
-        return None, f"Error calling Gemini AI: {str(e)}"
+        try:
+            response = groq_client.chat.completions.create(
+                model='llama-3.3-70b-versatile',
+                messages=[
+                    {"role": "system", "content": "You are a specialized CV parsing assistant. Always respond with valid JSON only."},
+                    {"role": "user", "content": prompt}
+                ],
+                response_format={"type": "json_object"}
+            )
+            json_text = response.choices[0].message.content
+        except Exception as e:
+            return None, f"Groq error: {str(e)}"
+    else:
+        return None, f"Unknown AI provider: {provider}"
+
+    # Try to parse the JSON response
+    try:
+        # Clean up the response text (remove markdown formatting if present)
+        json_text = json_text.strip()
+        if json_text.startswith('```json'):
+            json_text = json_text[7:]
+        if json_text.endswith('```'):
+            json_text = json_text[:-3]
+        
+        parsed_data = json.loads(json_text)
+        return parsed_data, None
+    except json.JSONDecodeError as e:
+        return None, f"Failed to parse AI response as JSON: {str(e)}\nResponse: {json_text[:200]}..."
 
 
+def parse_cv_with_gemini(cv_text):
+    """Backward compatibility for existing code."""
+    return parse_cv_with_ai(cv_text, 'gemini')
+            
 @app.route('/')
 @login_required
 def index():
@@ -717,25 +766,31 @@ def import_consultant_data(conn, consultant_id, payload):
             personal_info.get('linkedin_url', ''),
             personal_info.get('github_url', ''),
             personal_info.get('portfolio_url', ''),
-            personal_info.get('professional_summary', '')
+            personal_info.get('professional_summary', personal_info.get('summary', ''))
         ))
 
     for exp in payload.get('work_experience', []):
         conn.execute('''
             INSERT INTO work_experience (
                 consultant_id, company_name, position_title, location, start_date,
-                end_date, is_current, description, achievements, display_order
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                end_date, is_current, description, achievements, 
+                star_situation, star_tasks, star_actions, star_results,
+                display_order
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (
             consultant_id,
             exp.get('company_name', ''),
-            exp.get('position_title', ''),
+            exp.get('position_title', exp.get('job_title', '')),
             exp.get('location', ''),
             exp.get('start_date', ''),
             exp.get('end_date', None),
-            1 if exp.get('is_current') else 0,
+            1 if exp.get('is_current') or exp.get('end_date', None) is None else 0,
             exp.get('description', ''),
             exp.get('achievements', ''),
+            exp.get('star_situation', ''),
+            exp.get('star_tasks', ''),
+            exp.get('star_actions', ''),
+            exp.get('star_results', ''),
             exp.get('display_order', 0)
         ))
 
@@ -747,7 +802,7 @@ def import_consultant_data(conn, consultant_id, payload):
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (
             consultant_id,
-            edu.get('institution_name', ''),
+            edu.get('institution_name', edu.get('institution', '')),
             edu.get('degree', ''),
             edu.get('field_of_study', ''),
             edu.get('location', ''),
@@ -763,14 +818,13 @@ def import_consultant_data(conn, consultant_id, payload):
         conn.execute('''
             INSERT INTO skills (
                 consultant_id, skill_name, category, proficiency_level,
-                years_of_experience, display_order
-            ) VALUES (?, ?, ?, ?, ?, ?)
+                display_order
+            ) VALUES (?, ?, ?, ?, ?)
         ''', (
             consultant_id,
-            skill.get('skill_name', ''),
+            skill.get('skill_name', skill.get('name', '')),
             skill.get('category', ''),
-            skill.get('proficiency_level', ''),
-            skill.get('years_of_experience', None),
+            skill.get('proficiency_level', skill.get('proficiency', '')),
             skill.get('display_order', 0)
         ))
 
@@ -927,6 +981,7 @@ def parse_cv():
     if request.method == 'POST':
         cv_file = request.files.get('cv_file')
         consultant_name = request.form.get('consultant_name', '').strip()
+        ai_provider = request.form.get('ai_provider', 'gemini')
         
         if not cv_file:
             flash(get_translation('messages.cv_file_required'), 'error')
@@ -939,7 +994,7 @@ def parse_cv():
             return redirect(url_for('parse_cv'))
         
         # Parse CV with AI
-        parsed_data, error = parse_cv_with_gemini(cv_text)
+        parsed_data, error = parse_cv_with_ai(cv_text, ai_provider)
         if error:
             flash(f"{get_translation('messages.ai_parse_error')}: {error}", 'error')
             return redirect(url_for('parse_cv'))
@@ -961,7 +1016,7 @@ def parse_cv():
         
         return redirect(url_for('review_parsed_cv'))
     
-    return render_template('parse_cv.html')
+    return render_template('parse_cv.html', has_groq=bool(GROQ_API_KEY))
 
 
 @app.route('/consultants/review-parsed-cv')
@@ -1235,10 +1290,25 @@ def view_work_experience():
     """View all work experience entries."""
     conn = get_db_connection()
     consultant_id = resolve_current_consultant_id(conn)
-    experiences = conn.execute(
+    experiences_raw = conn.execute(
         'SELECT * FROM work_experience WHERE consultant_id = ? ORDER BY display_order, start_date DESC',
         (consultant_id,)
     ).fetchall()
+    
+    experiences = []
+    for exp in experiences_raw:
+        exp_dict = dict(exp)
+        # Fetch skills for this experience
+        skills = conn.execute('''
+            SELECT s.skill_name 
+            FROM skills s
+            JOIN experience_skills es ON s.id = es.skill_id
+            WHERE es.experience_id = ?
+            ORDER BY s.category, s.skill_name
+        ''', (exp['id'],)).fetchall()
+        exp_dict['skills'] = [s['skill_name'] for s in skills]
+        experiences.append(exp_dict)
+        
     conn.close()
     return render_template('work_experience.html', experiences=experiences)
 
@@ -1247,15 +1317,16 @@ def view_work_experience():
 @login_required
 def add_work_experience():
     """Add new work experience."""
+    conn = get_db_connection()
+    consultant_id = resolve_current_consultant_id(conn)
+    
     if request.method == 'POST':
-        conn = get_db_connection()
-        consultant_id = resolve_current_consultant_id(conn)
-        
-        conn.execute('''
+        cursor = conn.execute('''
             INSERT INTO work_experience (
                 consultant_id, company_name, position_title, location, start_date, end_date,
-                is_current, description, achievements, display_order
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                is_current, description, achievements, star_situation, star_tasks, 
+                star_actions, star_results, display_order
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (
             consultant_id,
             request.form['company_name'],
@@ -1266,15 +1337,34 @@ def add_work_experience():
             1 if request.form.get('is_current') else 0,
             request.form.get('description', ''),
             request.form.get('achievements', ''),
+            request.form.get('star_situation', ''),
+            request.form.get('star_tasks', ''),
+            request.form.get('star_actions', ''),
+            request.form.get('star_results', ''),
             request.form.get('display_order', 0)
         ))
+        
+        experience_id = cursor.lastrowid
+        
+        # Handle linked skills
+        skill_ids = request.form.getlist('skill_ids')
+        for skill_id in skill_ids:
+            conn.execute(
+                'INSERT INTO experience_skills (experience_id, skill_id) VALUES (?, ?)',
+                (experience_id, skill_id)
+            )
         
         conn.commit()
         conn.close()
         flash(get_translation('messages.work_experience_added'), 'success')
         return redirect(url_for('view_work_experience'))
     
-    return render_template('edit_work_experience.html', experience=None)
+    skills = conn.execute(
+        'SELECT id, skill_name, category FROM skills WHERE consultant_id = ? ORDER BY category, skill_name',
+        (consultant_id,)
+    ).fetchall()
+    conn.close()
+    return render_template('edit_work_experience.html', experience=None, all_skills=skills)
 
 
 @app.route('/work-experience/edit/<int:id>', methods=['GET', 'POST'])
@@ -1288,6 +1378,7 @@ def edit_work_experience(id):
             UPDATE work_experience SET
                 company_name = ?, position_title = ?, location = ?, start_date = ?,
                 end_date = ?, is_current = ?, description = ?, achievements = ?,
+                star_situation = ?, star_tasks = ?, star_actions = ?, star_results = ?,
                 display_order = ?, updated_at = CURRENT_TIMESTAMP
             WHERE id = ? AND consultant_id = ?
         ''', (
@@ -1299,10 +1390,23 @@ def edit_work_experience(id):
             1 if request.form.get('is_current') else 0,
             request.form.get('description', ''),
             request.form.get('achievements', ''),
+            request.form.get('star_situation', ''),
+            request.form.get('star_tasks', ''),
+            request.form.get('star_actions', ''),
+            request.form.get('star_results', ''),
             request.form.get('display_order', 0),
             id,
             consultant_id
         ))
+        
+        # Update linked skills
+        conn.execute('DELETE FROM experience_skills WHERE experience_id = ?', (id,))
+        skill_ids = request.form.getlist('skill_ids')
+        for skill_id in skill_ids:
+            conn.execute(
+                'INSERT INTO experience_skills (experience_id, skill_id) VALUES (?, ?)',
+                (id, skill_id)
+            )
         
         conn.commit()
         conn.close()
@@ -1313,8 +1417,27 @@ def edit_work_experience(id):
         'SELECT * FROM work_experience WHERE id = ? AND consultant_id = ?',
         (id, consultant_id)
     ).fetchone()
+    
+    if not experience:
+        conn.close()
+        flash(get_translation('messages.work_experience_not_found'), 'error')
+        return redirect(url_for('view_work_experience'))
+        
+    all_skills = conn.execute(
+        'SELECT id, skill_name, category FROM skills WHERE consultant_id = ? ORDER BY category, skill_name',
+        (consultant_id,)
+    ).fetchall()
+    
+    current_skill_ids = [row['skill_id'] for row in conn.execute(
+        'SELECT skill_id FROM experience_skills WHERE experience_id = ?',
+        (id,)
+    ).fetchall()]
+    
     conn.close()
-    return render_template('edit_work_experience.html', experience=experience)
+    return render_template('edit_work_experience.html', 
+                         experience=experience, 
+                         all_skills=all_skills,
+                         current_skill_ids=current_skill_ids)
 
 
 @app.route('/work-experience/delete/<int:id>', methods=['POST'])
@@ -1463,14 +1586,13 @@ def add_skill():
         
         conn.execute('''
             INSERT INTO skills (
-                consultant_id, skill_name, category, proficiency_level, years_of_experience, display_order
-            ) VALUES (?, ?, ?, ?, ?, ?)
+                consultant_id, skill_name, category, proficiency_level, display_order
+            ) VALUES (?, ?, ?, ?, ?)
         ''', (
             consultant_id,
             request.form['skill_name'],
             request.form.get('category', ''),
             request.form.get('proficiency_level', ''),
-            request.form.get('years_of_experience', None),
             request.form.get('display_order', 0)
         ))
         
@@ -1492,13 +1614,12 @@ def edit_skill(id):
         conn.execute('''
             UPDATE skills SET
                 skill_name = ?, category = ?, proficiency_level = ?,
-                years_of_experience = ?, display_order = ?, updated_at = CURRENT_TIMESTAMP
+                display_order = ?, updated_at = CURRENT_TIMESTAMP
             WHERE id = ? AND consultant_id = ?
         ''', (
             request.form['skill_name'],
             request.form.get('category', ''),
             request.form.get('proficiency_level', ''),
-            request.form.get('years_of_experience', None),
             request.form.get('display_order', 0),
             id,
             consultant_id

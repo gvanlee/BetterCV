@@ -57,15 +57,67 @@
         <div class="form-group">
             <label for="description">{{ t.work_experience.description }}</label>
             <textarea id="description" name="description" 
-                      rows="5">{{ experience['description'] if experience else '' }}</textarea>
+                      rows="3">{{ experience['description'] if experience else '' }}</textarea>
             <small>{{ t.work_experience.description_help }}</small>
         </div>
 
         <div class="form-group">
             <label for="achievements">{{ t.work_experience.achievements }}</label>
             <textarea id="achievements" name="achievements" 
-                      rows="5">{{ experience['achievements'] if experience else '' }}</textarea>
+                      rows="3">{{ experience['achievements'] if experience else '' }}</textarea>
             <small>{{ t.work_experience.achievements_help }}</small>
+        </div>
+
+        <hr style="margin: 2rem 0; border: 0; border-top: 1px solid var(--border-color);">
+        <h3>S.T.A.R.</h3>
+
+        <div class="form-group">
+            <label for="star_situation">{{ t.work_experience.star_situation }}</label>
+            <textarea id="star_situation" name="star_situation" 
+                      rows="3">{{ experience['star_situation'] if experience else '' }}</textarea>
+            <small>{{ t.work_experience.star_situation_help }}</small>
+        </div>
+
+        <div class="form-group">
+            <label for="star_tasks">{{ t.work_experience.star_tasks }}</label>
+            <textarea id="star_tasks" name="star_tasks" 
+                      rows="3">{{ experience['star_tasks'] if experience else '' }}</textarea>
+            <small>{{ t.work_experience.star_tasks_help }}</small>
+        </div>
+
+        <div class="form-group">
+            <label for="star_actions">{{ t.work_experience.star_actions }}</label>
+            <textarea id="star_actions" name="star_actions" 
+                      rows="5">{{ experience['star_actions'] if experience else '' }}</textarea>
+            <small>{{ t.work_experience.star_actions_help }}</small>
+        </div>
+
+        <div class="form-group">
+            <label for="star_results">{{ t.work_experience.star_results }}</label>
+            <textarea id="star_results" name="star_results" 
+                      rows="3">{{ experience['star_results'] if experience else '' }}</textarea>
+            <small>{{ t.work_experience.star_results_help }}</small>
+        </div>
+
+        <div class="form-group">
+            <label>{{ t.work_experience.relevant_skills }}</label>
+            <div class="skills-selector">
+                {% set current_cat = namespace(val='') %}
+                {% for skill in all_skills %}
+                    {% if skill['category'] != current_cat.val %}
+                        {% set current_cat.val = skill['category'] %}
+                        <div class="skill-group-label">{{ skill['category'] or t.skills.uncategorized }}</div>
+                    {% endif %}
+                    <label class="checkbox-label" style="display: inline-block; margin-right: 1rem; margin-bottom: 0.5rem; font-weight: normal;">
+                        <input type="checkbox" name="skill_ids" value="{{ skill['id'] }}"
+                               {% if current_skill_ids and skill['id'] in current_skill_ids %}checked{% endif %}>
+                        {{ skill['skill_name'] }}
+                    </label>
+                {% endfor %}
+            </div>
+            {% if not all_skills %}
+                <p class="text-muted"><small>{{ t.skills.no_data }}</small></p>
+            {% endif %}
         </div>
 
         <div class="form-group">

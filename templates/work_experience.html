@@ -9,38 +9,86 @@
 </div>
 
 {% if experiences %}
-<div class="list-container">
+<div class="card-grid-xl">
     {% for exp in experiences %}
-    <div class="list-item">
-        <div class="list-item-header">
-            <div>
-                <h3>{{ exp['position_title'] }}</h3>
-                <p class="company">{{ exp['company_name'] }}{% if exp['location'] %} - {{ exp['location'] }}{% endif %}</p>
-                <p class="date-range">
-                    {{ exp['start_date'] }} - 
-                    {% if exp['is_current'] %}{{ t.work_experience.present }}{% else %}{{ exp['end_date'] or t.common.na }}{% endif %}
-                </p>
+    <div class="card">
+        <div class="card-actions">
+            <a href="{{ url_for('edit_work_experience', id=exp['id']) }}" class="btn btn-small">{{ t.buttons.edit }}</a>
+            <form method="POST" action="{{ url_for('delete_work_experience', id=exp['id']) }}" 
+                  onsubmit="return confirm('{{ t.messages.delete_confirm }}');">
+                <button type="submit" class="btn btn-small btn-danger">{{ t.buttons.delete }}</button>
+            </form>
+        </div>
+        <h3>{{ exp['position_title'] }}</h3>
+        <div class="info-grid">
+            <div class="info-item">
+                <label>{{ t.work_experience.company_name }}:</label>
+                <span>{{ exp['company_name'] }}{% if exp['location'] %} - {{ exp['location'] }}{% endif %}</span>
             </div>
-            <div class="list-item-actions">
-                <a href="{{ url_for('edit_work_experience', id=exp['id']) }}" class="btn btn-small">{{ t.buttons.edit }}</a>
-                <form method="POST" action="{{ url_for('delete_work_experience', id=exp['id']) }}" 
-                      style="display: inline;" onsubmit="return confirm('{{ t.messages.delete_confirm }}');">
-                    <button type="submit" class="btn btn-small btn-danger">{{ t.buttons.delete }}</button>
-                </form>
+            <div class="info-item">
+                <label>{{ t.work_experience.period }}:</label>
+                <span>{{ exp['start_date'] }} - {% if exp['is_current'] %}{{ t.work_experience.present }}{% else %}{{ exp['end_date'] or t.common.na }}{% endif %}</span>
             </div>
         </div>
         
         {% if exp['description'] %}
-        <div class="list-item-content">
-            <h4>{{ t.work_experience.description }}:</h4>
-            <p>{{ exp['description'] }}</p>
+        <br>
+        <h4>{{ t.work_experience.description }}:</h4>
+        <div class="info-grid">
+            <div class="info-item">
+                <p>{{ exp['description'] }}</p>
+            </div>
         </div>
         {% endif %}
         
         {% if exp['achievements'] %}
-        <div class="list-item-content">
-            <h4>{{ t.work_experience.achievements }}:</h4>
-            <p>{{ exp['achievements'] }}</p>
+        <br>
+        <h4>{{ t.work_experience.achievements }}:</h4>
+        <div class="info-grid">
+            <div class="info-item">
+                <p>{{ exp['achievements'] }}</p>
+            </div>
+        </div>
+        {% endif %}
+
+        {% if exp['star_situation'] or exp['star_tasks'] or exp['star_actions'] or exp['star_results'] %}
+        <br>
+        <div class="star-section" style="border-top: 1px solid var(--border-color); padding-top: 1rem;">
+            <h4 style="color: var(--primary-color);">S.T.A.R.</h4>
+            <div class="info-grid">
+                {% if exp['star_situation'] %}
+                <div class="info-item">
+                    <label>{{ t.work_experience.star_situation }}:</label>
+                    <p>{{ exp['star_situation'] }}</p>
+                </div>
+                {% endif %}
+                {% if exp['star_tasks'] %}
+                <div class="info-item">
+                    <label>{{ t.work_experience.star_tasks }}:</label>
+                    <p>{{ exp['star_tasks'] }}</p>
+                </div>
+                {% endif %}
+                {% if exp['star_actions'] %}
+                <div class="info-item">
+                    <label>{{ t.work_experience.star_actions }}:</label>
+                    <p>{{ exp['star_actions'] }}</p>
+                </div>
+                {% endif %}
+                {% if exp['star_results'] %}
+                <div class="info-item">
+                    <label>{{ t.work_experience.star_results }}:</label>
+                    <p>{{ exp['star_results'] }}</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+
+        {% if exp['skills'] %}
+        <div class="skills-tags" style="margin-top: 1rem;">
+            {% for skill in exp['skills'] %}
+                <span class="badge" style="margin-right: 0.25rem;">{{ skill }}</span>
+            {% endfor %}
         </div>
         {% endif %}
     </div>

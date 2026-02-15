@@ -14,6 +14,7 @@ def get_db_connection():
     """Create and return a database connection."""
     conn = sqlite3.connect(DATABASE_NAME)
     conn.row_factory = sqlite3.Row
+    conn.execute('PRAGMA foreign_keys = ON')
     return conn
 
 
@@ -99,11 +100,34 @@ def init_database():
             is_current BOOLEAN DEFAULT 0,
             description TEXT,
             achievements TEXT,
+            star_situation TEXT,
+            star_tasks TEXT,
+            star_actions TEXT,
+            star_results TEXT,
             display_order INTEGER DEFAULT 0,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     ''')
+
+    # Migration: Add STAR columns and description/achievements to work_experience if they don't exist
+    # This is for existing databases created before these fields were added
+    cursor.execute("PRAGMA table_info(work_experience)")
+    columns = [column[1] for column in cursor.fetchall()]
+    
+    potential_columns = [
+        ('description', 'TEXT'),
+        ('achievements', 'TEXT'),
+        ('star_situation', 'TEXT'),
+        ('star_tasks', 'TEXT'),
+        ('star_actions', 'TEXT'),
+        ('star_results', 'TEXT'),
+        ('display_order', 'INTEGER DEFAULT 0')
+    ]
+    
+    for col_name, col_type in potential_columns:
+        if col_name not in columns:
+            cursor.execute(f"ALTER TABLE work_experience ADD COLUMN {col_name} {col_type}")
     
     # Education Table
     cursor.execute('''
@@ -133,10 +157,20 @@ def init_database():
             skill_name TEXT NOT NULL,
             category TEXT,
             proficiency_level TEXT,
-            years_of_experience INTEGER,
             display_order INTEGER DEFAULT 0,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+
+    # Experience-Skills Link Table (Many-to-Many)
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS experience_skills (
+            experience_id INTEGER,
+            skill_id INTEGER,
+            PRIMARY KEY (experience_id, skill_id),
+            FOREIGN KEY (experience_id) REFERENCES work_experience(id) ON DELETE CASCADE,
+            FOREIGN KEY (skill_id) REFERENCES skills(id) ON DELETE CASCADE
         )
     ''')
     

@@ -33,6 +33,17 @@
         
         <div class="form-row">
             <div class="form-group">
+                <label for="ai_provider">{{ t.cv_parsing.ai_model_label }}</label>
+                <select id="ai_provider" name="ai_provider">
+                    <option value="gemini">Google Gemini (Flash 1.5/2.0)</option>
+                    <option value="groq" {% if not has_groq %}disabled{% endif %}>Groq (Llama 3.3 70B)</option>
+                </select>
+                <small class="form-hint">{{ t.cv_parsing.ai_model_hint }}</small>
+            </div>
+        </div>
+
+        <div class="form-row">
+            <div class="form-group">
                 <label for="cv_file">{{ t.cv_parsing.file_label }} *</label>
                 <input type="file" id="cv_file" name="cv_file" accept=".pdf,.docx,.doc,.txt" required>
                 <small class="form-hint">{{ t.cv_parsing.file_hint }}</small>
