@@ -156,12 +156,63 @@ def init_database():
             consultant_id INTEGER,
             skill_name TEXT NOT NULL,
             category TEXT,
+            category_id INTEGER,
             proficiency_level TEXT,
             display_order INTEGER DEFAULT 0,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (category_id) REFERENCES skill_categories(id)
         )
     ''')
+
+    # Skill Categories Table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS skill_categories (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT UNIQUE NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+
+    # Seed default categories
+    default_categories = [
+        'Data Engineering',
+        'Data Modeling',
+        'Data Management',
+        'Data Analytics',
+        'Tools',
+        'Databases',
+        'Operating Systems',
+        'Programming Languages',
+        'Languages',
+        'Database Administration'
+    ]
+    
+    for cat_name in default_categories:
+        cursor.execute('''
+            INSERT OR IGNORE INTO skill_categories (name)
+            VALUES (?)
+        ''', (cat_name,))
+
+    # Migration: Add category_id to skills if it doesn't exist
+    cursor.execute("PRAGMA table_info(skills)")
+    skills_columns = [column[1] for column in cursor.fetchall()]
+    if 'category_id' not in skills_columns:
+        cursor.execute("ALTER TABLE skills ADD COLUMN category_id INTEGER REFERENCES skill_categories(id)")
+
+    # Migration: Map text categories to category_id
+    cursor.execute("SELECT id, name FROM skill_categories")
+    categories = cursor.fetchall()
+    cat_map = {c['name'].lower(): c['id'] for c in categories}
+    
+    cursor.execute("SELECT id, category FROM skills WHERE category_id IS NULL AND category IS NOT NULL")
+    skills_to_update = cursor.fetchall()
+    for skill in skills_to_update:
+        if skill['category'] and skill['category'].lower() in cat_map:
+            cursor.execute(
+                "UPDATE skills SET category_id = ? WHERE id = ?",
+                (cat_map[skill['category'].lower()], skill['id'])
+            )
 
     # Experience-Skills Link Table (Many-to-Many)
     cursor.execute('''
@@ -173,6 +224,17 @@ def init_database():
             FOREIGN KEY (skill_id) REFERENCES skills(id) ON DELETE CASCADE
         )
     ''')
+
+    # Project-Skills Link Table (Many-to-Many)
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS project_skills (
+            project_id INTEGER,
+            skill_id INTEGER,
+            PRIMARY KEY (project_id, skill_id),
+            FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+            FOREIGN KEY (skill_id) REFERENCES skills(id) ON DELETE CASCADE
+        )
+    ''')
     
     # Projects Table
     cursor.execute('''
@@ -181,7 +243,6 @@ def init_database():
             consultant_id INTEGER,
             project_name TEXT NOT NULL,
             description TEXT,
-            technologies_used TEXT,
             start_date DATE,
             end_date DATE,
             project_url TEXT,
@@ -270,6 +331,23 @@ def init_database():
     conn.commit()
     conn.close()
     print("Database initialized successfully!")
+
+
+def get_skill_categories():
+    """Get all skill categories with usage statistics."""
+    conn = get_db_connection()
+    categories = conn.execute('''
+        SELECT sc.*,
+               (SELECT COUNT(*) FROM skills WHERE category_id = sc.id) as skill_count,
+               (SELECT COUNT(*) 
+                FROM experience_skills es 
+                JOIN skills s ON es.skill_id = s.id 
+                WHERE s.category_id = sc.id) as experience_count
+        FROM skill_categories sc
+        ORDER BY sc.name
+    ''').fetchall()
+    conn.close()
+    return categories
 
 
 if __name__ == "__main__":

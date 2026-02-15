@@ -29,14 +29,6 @@
             <small>{{ t.projects.description_help }}</small>
         </div>
 
-        <div class="form-group">
-            <label for="technologies_used">{{ t.projects.technologies_used }}</label>
-            <input type="text" id="technologies_used" name="technologies_used" 
-                   value="{{ project['technologies_used'] if project else '' }}"
-                   placeholder="{{ t.projects.technologies_placeholder }}">
-            <small>{{ t.projects.technologies_help }}</small>
-        </div>
-
         <div class="form-row">
             <div class="form-group">
                 <label for="start_date">{{ t.projects.start_date }}</label>
@@ -73,6 +65,27 @@
             <textarea id="achievements" name="achievements" 
                       rows="4">{{ project['achievements'] if project else '' }}</textarea>
             <small>{{ t.projects.achievements_help }}</small>
+        </div>
+
+        <div class="form-group">
+            <label>{{ t.work_experience.relevant_skills }}</label>
+            <div class="skills-selector">
+                {% set current_cat = namespace(val='') %}
+                {% for skill in all_skills %}
+                    {% if skill['category_name'] != current_cat.val %}
+                        {% set current_cat.val = skill['category_name'] %}
+                        <div class="skill-group-label">{{ skill['category_name'] or t.skills.uncategorized }}</div>
+                    {% endif %}
+                    <label class="checkbox-label" style="display: inline-block; margin-right: 1rem; margin-bottom: 0.5rem; font-weight: normal;">
+                        <input type="checkbox" name="skill_ids" value="{{ skill['id'] }}"
+                               {% if current_skill_ids and skill['id'] in current_skill_ids %}checked{% endif %}>
+                        {{ skill['skill_name'] }}
+                    </label>
+                {% endfor %}
+            </div>
+            {% if not all_skills %}
+                <p class="text-muted"><small>{{ t.skills.no_data }}</small></p>
+            {% endif %}
         </div>
 
         <div class="form-group">

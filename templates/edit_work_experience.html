@@ -104,9 +104,9 @@
             <div class="skills-selector">
                 {% set current_cat = namespace(val='') %}
                 {% for skill in all_skills %}
-                    {% if skill['category'] != current_cat.val %}
-                        {% set current_cat.val = skill['category'] %}
-                        <div class="skill-group-label">{{ skill['category'] or t.skills.uncategorized }}</div>
+                    {% if skill['category_name'] != current_cat.val %}
+                        {% set current_cat.val = skill['category_name'] %}
+                        <div class="skill-group-label">{{ skill['category_name'] or t.skills.uncategorized }}</div>
                     {% endif %}
                     <label class="checkbox-label" style="display: inline-block; margin-right: 1rem; margin-bottom: 0.5rem; font-weight: normal;">
                         <input type="checkbox" name="skill_ids" value="{{ skill['id'] }}"

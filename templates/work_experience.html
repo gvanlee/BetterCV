@@ -31,59 +31,6 @@
             </div>
         </div>
         
-        {% if exp['description'] %}
-        <br>
-        <h4>{{ t.work_experience.description }}:</h4>
-        <div class="info-grid">
-            <div class="info-item">
-                <p>{{ exp['description'] }}</p>
-            </div>
-        </div>
-        {% endif %}
-        
-        {% if exp['achievements'] %}
-        <br>
-        <h4>{{ t.work_experience.achievements }}:</h4>
-        <div class="info-grid">
-            <div class="info-item">
-                <p>{{ exp['achievements'] }}</p>
-            </div>
-        </div>
-        {% endif %}
-
-        {% if exp['star_situation'] or exp['star_tasks'] or exp['star_actions'] or exp['star_results'] %}
-        <br>
-        <div class="star-section" style="border-top: 1px solid var(--border-color); padding-top: 1rem;">
-            <h4 style="color: var(--primary-color);">S.T.A.R.</h4>
-            <div class="info-grid">
-                {% if exp['star_situation'] %}
-                <div class="info-item">
-                    <label>{{ t.work_experience.star_situation }}:</label>
-                    <p>{{ exp['star_situation'] }}</p>
-                </div>
-                {% endif %}
-                {% if exp['star_tasks'] %}
-                <div class="info-item">
-                    <label>{{ t.work_experience.star_tasks }}:</label>
-                    <p>{{ exp['star_tasks'] }}</p>
-                </div>
-                {% endif %}
-                {% if exp['star_actions'] %}
-                <div class="info-item">
-                    <label>{{ t.work_experience.star_actions }}:</label>
-                    <p>{{ exp['star_actions'] }}</p>
-                </div>
-                {% endif %}
-                {% if exp['star_results'] %}
-                <div class="info-item">
-                    <label>{{ t.work_experience.star_results }}:</label>
-                    <p>{{ exp['star_results'] }}</p>
-                </div>
-                {% endif %}
-            </div>
-        </div>
-        {% endif %}
-
         {% if exp['skills'] %}
         <div class="skills-tags" style="margin-top: 1rem;">
             {% for skill in exp['skills'] %}

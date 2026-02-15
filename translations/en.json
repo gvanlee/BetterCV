@@ -144,7 +144,11 @@
     "display_order_help": "Lower numbers appear first within category",
     "uncategorized": "Uncategorized",
     "no_data": "No skills added yet.",
-    "add_button": "Add Your First Skill"
+    "add_button": "Add Your First Skill",
+    "manage_categories": "Manage Skill Categories",
+    "category_name": "Category Name",
+    "select_category": "Select a category",
+    "category_referenced_by_experience": "This category is referenced by experience records"
   },
   
   "projects": {
@@ -156,12 +160,10 @@
     "role_placeholder": "e.g., Lead Developer, Team Lead, Solo Developer",
     "description": "Project Description",
     "description_help": "Describe what the project does and its purpose",
-    "technologies_used": "Technologies Used",
-    "technologies_placeholder": "e.g., Python, Flask, SQLite, React",
-    "technologies_help": "Comma-separated list of technologies",
     "start_date": "Start Date",
     "end_date": "End Date",
     "end_date_help": "Leave empty if ongoing",
+    "period": "Period",
     "project_url": "Project URL",
     "github_url": "GitHub URL",
     "achievements": "Key Achievements",
@@ -242,6 +244,11 @@
     "skill_added": "Skill added successfully!",
     "skill_updated": "Skill updated successfully!",
     "skill_deleted": "Skill deleted successfully!",
+    "category_added": "Skill category added successfully!",
+    "category_exists": "This category name already exists.",
+    "category_deleted": "Skill category deleted successfully!",
+    "category_in_use": "Cannot delete category because it is still being used by skills.",
+    "category_referenced_by_experience": "Cannot delete category because its skills are referenced by experience records.",
     "project_added": "Project added successfully!",
     "project_updated": "Project updated successfully!",
     "project_deleted": "Project deleted successfully!",

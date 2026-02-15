@@ -163,6 +163,44 @@
             </table>
         </div>
     </div>
+
+    <!-- Skill Categories Management -->
+    <div class="admin-section">
+        <h3>{{ t.skills.manage_categories }}</h3>
+        
+        <form method="POST" action="{{ url_for('admin_add_skill_category') }}" class="inline-form">
+            <div class="form-row">
+                <input type="text" name="name" placeholder="{{ t.skills.category_name }}" required class="form-input">
+                <button type="submit" class="btn btn-primary">{{ t.buttons.add }}</button>
+            </div>
+        </form>
+
+        <div class="table-responsive">
+            <table class="admin-table">
+                <thead>
+                    <tr>
+                        <th>{{ t.skills.category_name }}</th>
+                        <th>{{ t.auth.actions }}</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for cat in skill_categories %}
+                    <tr>
+                        <td>{{ cat['name'] }}</td>
+                        <td>
+                            <form method="POST" action="{{ url_for('admin_delete_skill_category', category_id=cat['id']) }}" style="display: inline;" onsubmit="return confirm('{{ t.messages.delete_confirm }}');">
+                                <button type="submit" class="btn btn-small btn-danger" 
+                                        {% if cat['experience_count'] > 0 %}disabled title="{{ t.skills.category_referenced_by_experience }}"{% endif %}>
+                                    {{ t.buttons.delete }}
+                                </button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
 </div>
 
 <style>

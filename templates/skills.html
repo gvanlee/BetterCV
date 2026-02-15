@@ -12,13 +12,13 @@
 <div class="skills-container">
     {% set current_category = namespace(value='') %}
     {% for skill in skills %}
-        {% if skill['category'] != current_category.value %}
+        {% if skill['category_name'] != current_category.value %}
             {% if current_category.value != '' %}
                 </div></div>
             {% endif %}
-            {% set current_category.value = skill['category'] %}
+            {% set current_category.value = skill['category_name'] %}
             <div class="skill-category">
-                <h3>{{ skill['category'] or t.skills.uncategorized }}</h3>
+                <h3>{{ skill['category_name'] or t.skills.uncategorized }}</h3>
                 <div class="skill-list">
         {% endif %}
         

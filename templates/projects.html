@@ -33,12 +33,6 @@
                 <span>{{ project['start_date'] or t.common.na }} - {{ project['end_date'] or t.projects.ongoing }}</span>
             </div>
             {% endif %}
-            {% if project['technologies_used'] %}
-            <div class="info-item">
-                <label>{{ t.common.technologies }}:</label>
-                <span>{{ project['technologies_used'] }}</span>
-            </div>
-            {% endif %}
         </div>
         
         {% if project['description'] %}
@@ -58,6 +52,16 @@
             <div class="info-item">
                 <p>{{ project['achievements'] }}</p>
             </div>
+        </div>
+        {% endif %}
+
+        {% if project['skills'] %}
+        <br>
+        <h4>{{ t.work_experience.relevant_skills }}:</h4>
+        <div class="skills-list">
+            {% for skill in project['skills'] %}
+            <span class="badge">{{ skill }}</span>
+            {% endfor %}
         </div>
         {% endif %}
         

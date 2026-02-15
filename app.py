@@ -1,8 +1,7 @@
 from flask import Flask, render_template, request, redirect, url_for, flash, session, Response
 from flask_login import LoginManager, login_user, logout_user, login_required, current_user
-from database import get_db_connection
+from database import get_db_connection, init_database, get_skill_categories
 from datetime import datetime
-from database import init_database
 from authlib.integrations.flask_client import OAuth
 from dotenv import load_dotenv
 import json
@@ -271,7 +270,62 @@ def admin_dashboard():
     users = get_all_users()
     whitelist = get_all_whitelist()
     consultants = get_all_consultants()
-    return render_template('admin.html', users=users, whitelist=whitelist, all_consultants=consultants)
+    skill_categories = get_skill_categories()
+    return render_template('admin.html', 
+                         users=users, 
+                         whitelist=whitelist, 
+                         all_consultants=consultants,
+                         skill_categories=skill_categories)
+
+
+@app.route('/admin/skill-categories/add', methods=['POST'])
+@admin_required
+def admin_add_skill_category():
+    """Add new skill category."""
+    name = request.form.get('name')
+    
+    if name:
+        conn = get_db_connection()
+        try:
+            conn.execute(
+                'INSERT INTO skill_categories (name) VALUES (?)',
+                (name,)
+            )
+            conn.commit()
+            flash(get_translation('messages.category_added'), 'success')
+        except sqlite3.IntegrityError:
+            flash(get_translation('messages.category_exists'), 'error')
+        conn.close()
+    
+    return redirect(url_for('admin_dashboard'))
+
+
+@app.route('/admin/skill-categories/delete/<int:category_id>', methods=['POST'])
+@admin_required
+def admin_delete_skill_category(category_id):
+    """Delete skill category."""
+    conn = get_db_connection()
+    # Check if category is used in experience records
+    experience_usage = conn.execute('''
+        SELECT COUNT(*) 
+        FROM experience_skills es 
+        JOIN skills s ON es.skill_id = s.id 
+        WHERE s.category_id = ?
+    ''', (category_id,)).fetchone()[0]
+    
+    # Check if category is assigned to any skills (FK safety)
+    skill_usage = conn.execute('SELECT COUNT(*) FROM skills WHERE category_id = ?', (category_id,)).fetchone()[0]
+    
+    if experience_usage > 0:
+        flash(get_translation('messages.category_referenced_by_experience'), 'error')
+    elif skill_usage > 0:
+        flash(get_translation('messages.category_in_use'), 'error')
+    else:
+        conn.execute('DELETE FROM skill_categories WHERE id = ?', (category_id,))
+        conn.commit()
+        flash(get_translation('messages.category_deleted'), 'success')
+    conn.close()
+    return redirect(url_for('admin_dashboard'))
 
 
 @app.route('/admin/whitelist/add', methods=['POST'])
@@ -564,7 +618,6 @@ The JSON should match this exact schema:
     {{
       "name": "Project Name",
       "description": "Project description",
-      "technologies": "Technologies used",
       "start_date": "YYYY-MM-DD",
       "end_date": "YYYY-MM-DD or null",
       "url": "Project URL if mentioned"
@@ -743,6 +796,10 @@ def import_consultant_data(conn, consultant_id, payload):
     conn.execute('DELETE FROM skills WHERE consultant_id = ?', (consultant_id,))
     conn.execute('DELETE FROM projects WHERE consultant_id = ?', (consultant_id,))
     conn.execute('DELETE FROM certifications WHERE consultant_id = ?', (consultant_id,))
+    
+    # Also clean up junction tables for this consultant's entities
+    # Note: ON DELETE CASCADE handles this if the parent rows are deleted, 
+    # but since we are re-inserting, we ensure a clean slate.
 
     personal_info = payload.get('personal_info')
     if isinstance(personal_info, dict):
@@ -814,32 +871,102 @@ def import_consultant_data(conn, consultant_id, payload):
             edu.get('display_order', 0)
         ))
 
+    # Map skill categories and insert skills
+    categories_rows = conn.execute('SELECT id, name FROM skill_categories').fetchall()
+    cat_map = {c['name'].lower(): c['id'] for c in categories_rows}
+    
+    # Track inserted skills by name to link to experience/projects
+    skill_name_to_id = {}
+
     for skill in payload.get('skills', []):
-        conn.execute('''
+        cat_name = skill.get('category_name', skill.get('category', '')).strip()
+        
+        # Ensure category exists in the system
+        if cat_name:
+            conn.execute('INSERT OR IGNORE INTO skill_categories (name) VALUES (?)', (cat_name,))
+            # Refresh cat_map to include the potentially new category
+            categories_rows = conn.execute('SELECT id, name FROM skill_categories').fetchall()
+            cat_map = {c['name'].lower(): c['id'] for c in categories_rows}
+            
+        category_id = cat_map.get(cat_name.lower()) if cat_name else None
+        
+        cursor = conn.execute('''
             INSERT INTO skills (
-                consultant_id, skill_name, category, proficiency_level,
+                consultant_id, skill_name, category_id, proficiency_level,
                 display_order
             ) VALUES (?, ?, ?, ?, ?)
         ''', (
             consultant_id,
             skill.get('skill_name', skill.get('name', '')),
-            skill.get('category', ''),
+            category_id,
             skill.get('proficiency_level', skill.get('proficiency', '')),
             skill.get('display_order', 0)
         ))
+        skill_name_to_id[skill.get('skill_name', skill.get('name', '')).lower()] = cursor.lastrowid
+
+    for exp in payload.get('work_experience', []):
+        cursor = conn.execute('''
+            INSERT INTO work_experience (
+                consultant_id, company_name, position_title, location, start_date,
+                end_date, is_current, description, achievements, 
+                star_situation, star_tasks, star_actions, star_results,
+                display_order
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (
+            consultant_id,
+            exp.get('company_name', ''),
+            exp.get('position_title', exp.get('job_title', '')),
+            exp.get('location', ''),
+            exp.get('start_date', ''),
+            exp.get('end_date', None),
+            1 if exp.get('is_current') or exp.get('end_date', None) is None else 0,
+            exp.get('description', ''),
+            exp.get('achievements', ''),
+            exp.get('star_situation', ''),
+            exp.get('star_tasks', ''),
+            exp.get('star_actions', ''),
+            exp.get('star_results', ''),
+            exp.get('display_order', 0)
+        ))
+        
+        # Link skills to work experience
+        exp_id = cursor.lastrowid
+        for skill_name in exp.get('skills', []):
+            skill_id = skill_name_to_id.get(skill_name.lower())
+            if skill_id:
+                conn.execute('INSERT INTO experience_skills (experience_id, skill_id) VALUES (?, ?)', (exp_id, skill_id))
+
+    for edu in payload.get('education', []):
+        conn.execute('''
+            INSERT INTO education (
+                consultant_id, institution_name, degree, field_of_study, location,
+                start_date, end_date, gpa, honors, description, display_order
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (
+            consultant_id,
+            edu.get('institution_name', edu.get('institution', '')),
+            edu.get('degree', ''),
+            edu.get('field_of_study', ''),
+            edu.get('location', ''),
+            edu.get('start_date', None),
+            edu.get('end_date', None),
+            edu.get('gpa', ''),
+            edu.get('honors', ''),
+            edu.get('description', ''),
+            edu.get('display_order', 0)
+        ))
 
     for project in payload.get('projects', []):
-        conn.execute('''
+        cursor = conn.execute('''
             INSERT INTO projects (
-                consultant_id, project_name, description, technologies_used,
+                consultant_id, project_name, description,
                 start_date, end_date, project_url, github_url, role, achievements,
                 display_order
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (
             consultant_id,
             project.get('project_name', ''),
             project.get('description', ''),
-            project.get('technologies_used', ''),
             project.get('start_date', None),
             project.get('end_date', None),
             project.get('project_url', ''),
@@ -848,6 +975,13 @@ def import_consultant_data(conn, consultant_id, payload):
             project.get('achievements', ''),
             project.get('display_order', 0)
         ))
+        
+        # Link skills to projects
+        proj_id = cursor.lastrowid
+        for skill_name in project.get('skills', []):
+            skill_id = skill_name_to_id.get(skill_name.lower())
+            if skill_id:
+                conn.execute('INSERT INTO project_skills (project_id, skill_id) VALUES (?, ?)', (proj_id, skill_id))
 
     for cert in payload.get('certifications', []):
         conn.execute('''
@@ -1168,15 +1302,46 @@ def export_consultant(consultant_id):
         payload[key] = []
         for row in rows:
             row_data = dict(row)
+            
+            # Special handling for skills to include category name
+            if table == 'skills' and row_data.get('category_id'):
+                cat = conn.execute('SELECT name FROM skill_categories WHERE id = ?', (row_data['category_id'],)).fetchone()
+                if cat:
+                    row_data['category_name'] = cat['name']
+
+            # Special handling for experience and projects to include linked skills
+            if table == 'work_experience':
+                skills = conn.execute('''
+                    SELECT s.skill_name 
+                    FROM skills s
+                    JOIN experience_skills es ON s.id = es.skill_id
+                    WHERE es.experience_id = ?
+                ''', (row['id'],)).fetchall()
+                row_data['skills'] = [s['skill_name'] for s in skills]
+            
+            if table == 'projects':
+                skills = conn.execute('''
+                    SELECT s.skill_name 
+                    FROM skills s
+                    JOIN project_skills ps ON s.id = ps.skill_id
+                    WHERE ps.project_id = ?
+                ''', (row['id'],)).fetchall()
+                row_data['skills'] = [s['skill_name'] for s in skills]
+
             row_data.pop('id', None)
             row_data.pop('consultant_id', None)
             row_data.pop('created_at', None)
             row_data.pop('updated_at', None)
+            row_data.pop('category', None) # Remove old text category field if exists
+            row_data.pop('years_of_experience', None) # Remove legacy field if it exists in DB
             payload[key].append(row_data)
 
     conn.close()
 
-    filename = f"consultant_{consultant_id}_export.json"
+    # Sanitize display name for filename
+    safe_name = "".join([c if c.isalnum() else "_" for c in consultant['display_name']])
+    filename = f"{safe_name}.json"
+    
     response = Response(
         json.dumps(payload, indent=2),
         mimetype='application/json'
@@ -1359,10 +1524,13 @@ def add_work_experience():
         flash(get_translation('messages.work_experience_added'), 'success')
         return redirect(url_for('view_work_experience'))
     
-    skills = conn.execute(
-        'SELECT id, skill_name, category FROM skills WHERE consultant_id = ? ORDER BY category, skill_name',
-        (consultant_id,)
-    ).fetchall()
+    skills = conn.execute('''
+        SELECT s.id, s.skill_name, c.name as category_name
+        FROM skills s
+        LEFT JOIN skill_categories c ON s.category_id = c.id
+        WHERE s.consultant_id = ?
+        ORDER BY c.name, s.skill_name
+    ''', (consultant_id,)).fetchall()
     conn.close()
     return render_template('edit_work_experience.html', experience=None, all_skills=skills)
 
@@ -1423,10 +1591,13 @@ def edit_work_experience(id):
         flash(get_translation('messages.work_experience_not_found'), 'error')
         return redirect(url_for('view_work_experience'))
         
-    all_skills = conn.execute(
-        'SELECT id, skill_name, category FROM skills WHERE consultant_id = ? ORDER BY category, skill_name',
-        (consultant_id,)
-    ).fetchall()
+    all_skills = conn.execute('''
+        SELECT s.id, s.skill_name, c.name as category_name
+        FROM skills s
+        LEFT JOIN skill_categories c ON s.category_id = c.id
+        WHERE s.consultant_id = ?
+        ORDER BY c.name, s.skill_name
+    ''', (consultant_id,)).fetchall()
     
     current_skill_ids = [row['skill_id'] for row in conn.execute(
         'SELECT skill_id FROM experience_skills WHERE experience_id = ?',
@@ -1569,10 +1740,13 @@ def view_skills():
     """View all skills."""
     conn = get_db_connection()
     consultant_id = resolve_current_consultant_id(conn)
-    skills = conn.execute(
-        'SELECT * FROM skills WHERE consultant_id = ? ORDER BY category, display_order, skill_name',
-        (consultant_id,)
-    ).fetchall()
+    skills = conn.execute('''
+        SELECT s.*, c.name as category_name
+        FROM skills s
+        LEFT JOIN skill_categories c ON s.category_id = c.id
+        WHERE s.consultant_id = ?
+        ORDER BY c.name, s.display_order, s.skill_name
+    ''', (consultant_id,)).fetchall()
     conn.close()
     return render_template('skills.html', skills=skills)
 
@@ -1586,12 +1760,12 @@ def add_skill():
         
         conn.execute('''
             INSERT INTO skills (
-                consultant_id, skill_name, category, proficiency_level, display_order
+                consultant_id, skill_name, category_id, proficiency_level, display_order
             ) VALUES (?, ?, ?, ?, ?)
         ''', (
             consultant_id,
             request.form['skill_name'],
-            request.form.get('category', ''),
+            request.form.get('category_id'),
             request.form.get('proficiency_level', ''),
             request.form.get('display_order', 0)
         ))
@@ -1601,7 +1775,8 @@ def add_skill():
         flash(get_translation('messages.skill_added'), 'success')
         return redirect(url_for('view_skills'))
     
-    return render_template('edit_skill.html', skill=None)
+    categories = get_skill_categories()
+    return render_template('edit_skill.html', skill=None, categories=categories)
 
 
 @app.route('/skills/edit/<int:id>', methods=['GET', 'POST'])
@@ -1613,12 +1788,12 @@ def edit_skill(id):
     if request.method == 'POST':
         conn.execute('''
             UPDATE skills SET
-                skill_name = ?, category = ?, proficiency_level = ?,
+                skill_name = ?, category_id = ?, proficiency_level = ?,
                 display_order = ?, updated_at = CURRENT_TIMESTAMP
             WHERE id = ? AND consultant_id = ?
         ''', (
             request.form['skill_name'],
-            request.form.get('category', ''),
+            request.form.get('category_id'),
             request.form.get('proficiency_level', ''),
             request.form.get('display_order', 0),
             id,
@@ -1634,8 +1809,9 @@ def edit_skill(id):
         'SELECT * FROM skills WHERE id = ? AND consultant_id = ?',
         (id, consultant_id)
     ).fetchone()
+    categories = get_skill_categories()
     conn.close()
-    return render_template('edit_skill.html', skill=skill)
+    return render_template('edit_skill.html', skill=skill, categories=categories)
 
 
 @app.route('/skills/delete/<int:id>', methods=['POST'])
@@ -1661,10 +1837,25 @@ def view_projects():
     """View all projects."""
     conn = get_db_connection()
     consultant_id = resolve_current_consultant_id(conn)
-    projects = conn.execute(
+    projects_raw = conn.execute(
         'SELECT * FROM projects WHERE consultant_id = ? ORDER BY display_order, start_date DESC',
         (consultant_id,)
     ).fetchall()
+    
+    projects = []
+    for proj in projects_raw:
+        proj_dict = dict(proj)
+        # Fetch skills for this project
+        skills = conn.execute('''
+            SELECT s.skill_name 
+            FROM skills s
+            JOIN project_skills ps ON s.id = ps.skill_id
+            WHERE ps.project_id = ?
+            ORDER BY s.skill_name
+        ''', (proj['id'],)).fetchall()
+        proj_dict['skills'] = [s['skill_name'] for s in skills]
+        projects.append(proj_dict)
+        
     conn.close()
     return render_template('projects.html', projects=projects)
 
@@ -1672,20 +1863,19 @@ def view_projects():
 @app.route('/projects/add', methods=['GET', 'POST'])
 def add_project():
     """Add new project."""
+    conn = get_db_connection()
+    consultant_id = resolve_current_consultant_id(conn)
+    
     if request.method == 'POST':
-        conn = get_db_connection()
-        consultant_id = resolve_current_consultant_id(conn)
-        
-        conn.execute('''
+        cursor = conn.execute('''
             INSERT INTO projects (
-                consultant_id, project_name, description, technologies_used, start_date, end_date,
+                consultant_id, project_name, description, start_date, end_date,
                 project_url, github_url, role, achievements, display_order
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (
             consultant_id,
             request.form['project_name'],
             request.form.get('description', ''),
-            request.form.get('technologies_used', ''),
             request.form.get('start_date', None),
             request.form.get('end_date', None),
             request.form.get('project_url', ''),
@@ -1695,12 +1885,30 @@ def add_project():
             request.form.get('display_order', 0)
         ))
         
+        project_id = cursor.lastrowid
+        
+        # Handle linked skills
+        skill_ids = request.form.getlist('skill_ids')
+        for skill_id in skill_ids:
+            conn.execute(
+                'INSERT INTO project_skills (project_id, skill_id) VALUES (?, ?)',
+                (project_id, skill_id)
+            )
+        
         conn.commit()
         conn.close()
         flash(get_translation('messages.project_added'), 'success')
         return redirect(url_for('view_projects'))
     
-    return render_template('edit_project.html', project=None)
+    all_skills = conn.execute('''
+        SELECT s.id, s.skill_name, c.name as category_name
+        FROM skills s
+        LEFT JOIN skill_categories c ON s.category_id = c.id
+        WHERE s.consultant_id = ?
+        ORDER BY c.name, s.skill_name
+    ''', (consultant_id,)).fetchall()
+    conn.close()
+    return render_template('edit_project.html', project=None, all_skills=all_skills)
 
 
 @app.route('/projects/edit/<int:id>', methods=['GET', 'POST'])
@@ -1712,14 +1920,13 @@ def edit_project(id):
     if request.method == 'POST':
         conn.execute('''
             UPDATE projects SET
-                project_name = ?, description = ?, technologies_used = ?, start_date = ?,
+                project_name = ?, description = ?, start_date = ?,
                 end_date = ?, project_url = ?, github_url = ?, role = ?, achievements = ?,
                 display_order = ?, updated_at = CURRENT_TIMESTAMP
             WHERE id = ? AND consultant_id = ?
         ''', (
             request.form['project_name'],
             request.form.get('description', ''),
-            request.form.get('technologies_used', ''),
             request.form.get('start_date', None),
             request.form.get('end_date', None),
             request.form.get('project_url', ''),
@@ -1731,6 +1938,15 @@ def edit_project(id):
             consultant_id
         ))
         
+        # Update linked skills
+        conn.execute('DELETE FROM project_skills WHERE project_id = ?', (id,))
+        skill_ids = request.form.getlist('skill_ids')
+        for skill_id in skill_ids:
+            conn.execute(
+                'INSERT INTO project_skills (project_id, skill_id) VALUES (?, ?)',
+                (id, skill_id)
+            )
+        
         conn.commit()
         conn.close()
         flash(get_translation('messages.project_updated'), 'success')
@@ -1740,8 +1956,30 @@ def edit_project(id):
         'SELECT * FROM projects WHERE id = ? AND consultant_id = ?',
         (id, consultant_id)
     ).fetchone()
+    
+    if not project:
+        conn.close()
+        flash(get_translation('messages.project_not_found'), 'error')
+        return redirect(url_for('view_projects'))
+        
+    all_skills = conn.execute('''
+        SELECT s.id, s.skill_name, c.name as category_name
+        FROM skills s
+        LEFT JOIN skill_categories c ON s.category_id = c.id
+        WHERE s.consultant_id = ?
+        ORDER BY c.name, s.skill_name
+    ''', (consultant_id,)).fetchall()
+    
+    current_skill_ids = [row['skill_id'] for row in conn.execute(
+        'SELECT skill_id FROM project_skills WHERE project_id = ?',
+        (id,)
+    ).fetchall()]
+    
     conn.close()
-    return render_template('edit_project.html', project=project)
+    return render_template('edit_project.html', 
+                         project=project, 
+                         all_skills=all_skills,
+                         current_skill_ids=current_skill_ids)
 
 
 @app.route('/projects/delete/<int:id>', methods=['POST'])

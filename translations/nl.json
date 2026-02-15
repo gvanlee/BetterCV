@@ -144,7 +144,11 @@
     "display_order_help": "Lagere getallen verschijnen eerst binnen categorie",
     "uncategorized": "Niet gecategoriseerd",
     "no_data": "Nog geen vaardigheden toegevoegd.",
-    "add_button": "Voeg Uw Eerste Vaardigheid Toe"
+    "add_button": "Voeg Uw Eerste Vaardigheid Toe",
+    "manage_categories": "Beheer Vaardigheidscategorieën",
+    "category_name": "Categorienaam",
+    "select_category": "Selecteer een categorie",
+    "category_referenced_by_experience": "Deze categorie wordt gebruikt in werkervaringen"
   },
   
   "projects": {
@@ -156,12 +160,10 @@
     "role_placeholder": "bijv. Lead Developer, Teamleider, Solo Developer",
     "description": "Projectbeschrijving",
     "description_help": "Beschrijf wat het project doet en het doel ervan",
-    "technologies_used": "Gebruikte Technologieën",
-    "technologies_placeholder": "bijv. Python, Flask, SQLite, React",
-    "technologies_help": "Kommagescheiden lijst van technologieën",
     "start_date": "Startdatum",
     "end_date": "Einddatum",
     "end_date_help": "Laat leeg indien lopend",
+    "period": "Periode",
     "project_url": "Project URL",
     "github_url": "GitHub URL",
     "achievements": "Belangrijkste Prestaties",
@@ -242,6 +244,11 @@
     "skill_added": "Vaardigheid succesvol toegevoegd!",
     "skill_updated": "Vaardigheid succesvol bijgewerkt!",
     "skill_deleted": "Vaardigheid succesvol verwijderd!",
+    "category_added": "Vaardigheidscategorie succesvol toegevoegd!",
+    "category_exists": "Deze categorienaam bestaat al.",
+    "category_deleted": "Vaardigheidscategorie succesvol verwijderd!",
+    "category_in_use": "Kan categorie niet verwijderen omdat deze nog wordt gebruikt door vaardigheden.",
+    "category_referenced_by_experience": "Kan categorie niet verwijderen omdat de vaardigheden worden gebruikt in werkervaringen.",
     "project_added": "Project succesvol toegevoegd!",
     "project_updated": "Project succesvol bijgewerkt!",
     "project_deleted": "Project succesvol verwijderd!",

@@ -17,20 +17,15 @@
 
         <div class="form-row">
             <div class="form-group">
-                <label for="category">{{ t.skills.category }}</label>
-                <input type="text" id="category" name="category" 
-                       value="{{ skill['category'] if skill else '' }}"
-                       placeholder="{{ t.skills.category_placeholder }}"
-                       list="category-suggestions">
-                <datalist id="category-suggestions">
-                    <option value="Programming Languages">
-                    <option value="Frameworks & Libraries">
-                    <option value="Tools & Technologies">
-                    <option value="Databases">
-                    <option value="Cloud Platforms">
-                    <option value="Soft Skills">
-                    <option value="Languages">
-                </datalist>
+                <label for="category_id">{{ t.skills.category }}</label>
+                <select id="category_id" name="category_id">
+                    <option value="">{{ t.skills.select_category }}</option>
+                    {% for cat in categories %}
+                    <option value="{{ cat['id'] }}" {% if skill and skill['category_id'] == cat['id'] %}selected{% endif %}>
+                        {{ cat['name'] }}
+                    </option>
+                    {% endfor %}
+                </select>
             </div>
             
             <div class="form-group">
