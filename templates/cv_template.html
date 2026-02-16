@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="{{ current_lang }}">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CV - {{ personal_info.first_name }} {{ personal_info.last_name }}</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 210mm;
+            margin: 0 auto;
+            padding: 20mm;
+            background: white;
+        }
+        
+        h1 {
+            color: #2c3e50;
+            font-size: 2.5em;
+            margin-bottom: 0.3em;
+            border-bottom: 3px solid #3498db;
+            padding-bottom: 0.3em;
+        }
+        
+        h2 {
+            color: #2c3e50;
+            font-size: 1.8em;
+            margin-top: 1.5em;
+            margin-bottom: 0.5em;
+            border-bottom: 2px solid #3498db;
+            padding-bottom: 0.2em;
+        }
+        
+        h3 {
+            color: #34495e;
+            font-size: 1.3em;
+            margin-top: 0.8em;
+            margin-bottom: 0.3em;
+        }
+        
+        h4 {
+            color: #555;
+            font-size: 1.1em;
+            margin-top: 0.5em;
+            margin-bottom: 0.2em;
+        }
+        
+        .header {
+            margin-bottom: 2em;
+        }
+        
+        .contact-info {
+            color: #555;
+            margin-bottom: 1em;
+        }
+        
+        .contact-info p {
+            margin: 0.3em 0;
+        }
+        
+        .contact-info a {
+            color: #3498db;
+            text-decoration: none;
+        }
+        
+        .section {
+            margin-bottom: 2em;
+        }
+        
+        .entry {
+            margin-bottom: 1.5em;
+            page-break-inside: avoid;
+        }
+        
+        .entry-header {
+            margin-bottom: 0.5em;
+        }
+        
+        .entry-title {
+            font-weight: bold;
+            color: #2c3e50;
+        }
+        
+        .entry-subtitle {
+            color: #7f8c8d;
+            font-style: italic;
+        }
+        
+        .entry-date {
+            color: #95a5a6;
+            font-size: 0.9em;
+        }
+        
+        .entry-location {
+            color: #7f8c8d;
+            font-size: 0.95em;
+        }
+        
+        .description {
+            margin-top: 0.5em;
+            text-align: justify;
+        }
+        
+        .description p {
+            margin: 0.3em 0;
+        }
+        
+        .description ul {
+            margin: 0.3em 0;
+            padding-left: 1.5em;
+        }
+        
+        .description li {
+            margin-bottom: 0.2em;
+        }
+        
+        .skills-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 0.5em;
+            margin-top: 0.5em;
+        }
+        
+        .skill-item {
+            background: #ecf0f1;
+            padding: 0.4em 0.8em;
+            border-radius: 4px;
+            font-size: 0.95em;
+        }
+        
+        .skill-category {
+            margin-bottom: 1em;
+        }
+        
+        .skill-category-title {
+            font-weight: bold;
+            color: #34495e;
+            margin-bottom: 0.3em;
+        }
+        
+        .skill-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5em;
+        }
+        
+        ul {
+            margin-left: 1.5em;
+            margin-top: 0.3em;
+        }
+        
+        li {
+            margin-bottom: 0.3em;
+        }
+        
+        @media print {
+            body {
+                padding: 0;
+                max-width: 100%;
+            }
+            
+            .section {
+                page-break-inside: avoid;
+            }
+            
+            h2 {
+                page-break-after: avoid;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Header with Personal Information -->
+    <div class="header">
+        {% if personal_info %}
+        <h1>{{ personal_info.first_name }} {{ personal_info.last_name }}</h1>
+        <div class="contact-info">
+            {% if personal_info.email %}<p>{{ personal_info.email }}</p>{% endif %}
+            {% if personal_info.phone %}<p>{{ personal_info.phone }}</p>{% endif %}
+            {% if personal_info.address or personal_info.city or personal_info.country %}
+            <p>
+                {% if personal_info.address %}{{ personal_info.address }}{% endif %}
+                {% if personal_info.city %}{% if personal_info.address %}, {% endif %}{{ personal_info.city }}{% endif %}
+                {% if personal_info.state %}, {{ personal_info.state }}{% endif %}
+                {% if personal_info.zip_code %} {{ personal_info.zip_code }}{% endif %}
+                {% if personal_info.country %}{% if personal_info.city or personal_info.address %}, {% endif %}{{ personal_info.country }}{% endif %}
+            </p>
+            {% endif %}
+            {% if personal_info.linkedin_url or personal_info.github_url or personal_info.portfolio_url %}
+            <p>
+                {% if personal_info.linkedin_url %}<a href="{{ personal_info.linkedin_url }}">LinkedIn</a>{% endif %}
+                {% if personal_info.github_url %}{% if personal_info.linkedin_url %} | {% endif %}<a href="{{ personal_info.github_url }}">GitHub</a>{% endif %}
+                {% if personal_info.portfolio_url %}{% if personal_info.linkedin_url or personal_info.github_url %} | {% endif %}<a href="{{ personal_info.portfolio_url }}">Portfolio</a>{% endif %}
+            </p>
+            {% endif %}
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Professional Summary -->
+    {% if personal_info and personal_info.professional_summary %}
+    <div class="section">
+        <h2>{{ t.personal_info.professional_summary }}</h2>
+        <div class="description">{{ personal_info.professional_summary }}</div>
+    </div>
+    {% endif %}
+
+    <!-- Work Experience -->
+    {% if work_experiences %}
+    <div class="section">
+        <h2>{{ t.work_experience.title }}</h2>
+        {% for exp in work_experiences %}
+        <div class="entry">
+            <div class="entry-header">
+                <h3 class="entry-title">{{ exp.position_title }}</h3>
+                <div class="entry-subtitle">{{ exp.company_name }}</div>
+                <div>
+                    {% if exp.location %}<span class="entry-location">{{ exp.location }}</span> | {% endif %}
+                    <span class="entry-date">
+                        {{ exp.start_date }} - {% if exp.is_current %}{{ t.work_experience.present }}{% else %}{{ exp.end_date or t.common.na }}{% endif %}
+                    </span>
+                </div>
+            </div>
+            {% if exp.description %}
+            <div class="description">{{ exp.description|format_markdown|safe }}</div>
+            {% endif %}
+            {% if exp.achievements %}
+            <div class="description">
+                <strong>{{ t.work_experience.achievements }}:</strong>
+                {{ exp.achievements|format_markdown|safe }}
+            </div>
+            {% endif %}
+            {% if exp.star_situation or exp.star_tasks or exp.star_actions or exp.star_results %}
+            <div class="description">
+                {% if exp.star_situation %}<div><strong>{{ t.work_experience.star_situation }}:</strong> {{ exp.star_situation|format_markdown|safe }}</div>{% endif %}
+                {% if exp.star_tasks %}<div><strong>{{ t.work_experience.star_tasks }}:</strong> {{ exp.star_tasks|format_markdown|safe }}</div>{% endif %}
+                {% if exp.star_actions %}<div><strong>{{ t.work_experience.star_actions }}:</strong> {{ exp.star_actions|format_markdown|safe }}</div>{% endif %}
+                {% if exp.star_results %}<div><strong>{{ t.work_experience.star_results }}:</strong> {{ exp.star_results|format_markdown|safe }}</div>{% endif %}
+            </div>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    <!-- Education -->
+    {% if education %}
+    <div class="section">
+        <h2>{{ t.education.title }}</h2>
+        {% for edu in education %}
+        <div class="entry">
+            <div class="entry-header">
+                <h3 class="entry-title">{{ edu.degree }}{% if edu.field_of_study %} - {{ edu.field_of_study }}{% endif %}</h3>
+                <div class="entry-subtitle">{{ edu.institution_name }}</div>
+                <div>
+                    {% if edu.location %}<span class="entry-location">{{ edu.location }}</span> | {% endif %}
+                    <span class="entry-date">
+                        {% if edu.start_date %}{{ edu.start_date }} - {% endif %}{{ edu.end_date or t.education.in_progress }}
+                    </span>
+                </div>
+            </div>
+            {% if edu.gpa or edu.honors %}
+            <div class="description">
+                {% if edu.gpa %}<p><strong>{{ t.education.gpa }}:</strong> {{ edu.gpa }}</p>{% endif %}
+                {% if edu.honors %}<p><strong>{{ t.education.honors }}:</strong> {{ edu.honors }}</p>{% endif %}
+            </div>
+            {% endif %}
+            {% if edu.description %}
+            <div class="description">{{ edu.description|format_markdown|safe }}</div>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    <!-- Certifications -->
+    {% if certifications %}
+    <div class="section">
+        <h2>{{ t.certifications.title }}</h2>
+        {% for cert in certifications %}
+        <div class="entry">
+            <div class="entry-header">
+                <h3 class="entry-title">{{ cert.certification_name }}</h3>
+                <div class="entry-subtitle">{{ cert.issuing_organization }}</div>
+                <div class="entry-date">
+                    {{ t.certifications.issued }}: {{ cert.issue_date }}
+                    {% if cert.expiration_date %} | {{ t.certifications.expires }}: {{ cert.expiration_date }}{% endif %}
+                </div>
+            </div>
+            {% if cert.credential_id %}
+            <div class="description"><strong>{{ t.certifications.credential_id }}:</strong> {{ cert.credential_id }}</div>
+            {% endif %}
+            {% if cert.credential_url %}
+            <div class="description"><a href="{{ cert.credential_url }}">{{ t.certifications.view_credential }}</a></div>
+            {% endif %}
+            {% if cert.description %}
+            <div class="description">{{ cert.description|format_markdown|safe }}</div>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    <!-- Skills -->
+    {% if skills_by_category %}
+    <div class="section">
+        <h2>{{ t.skills.title }}</h2>
+        {% for category_name, category_skills in skills_by_category.items() %}
+        <div class="skill-category">
+            <div class="skill-category-title">{{ category_name }}</div>
+            <div class="skill-list">
+                {% for skill in category_skills %}
+                <span class="skill-item">{{ skill.skill_name }}{% if skill.proficiency_level %} ({{ skill.proficiency_level }}){% endif %}</span>
+                {% endfor %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    <!-- Projects -->
+    {% if projects %}
+    <div class="section">
+        <h2>{{ t.projects.title }}</h2>
+        {% for project in projects %}
+        <div class="entry">
+            <div class="entry-header">
+                <h3 class="entry-title">{{ project.project_name }}</h3>
+                {% if project.role %}<div class="entry-subtitle">{{ project.role }}</div>{% endif %}
+                <div class="entry-date">
+                    {% if project.start_date %}{{ project.start_date }} - {% endif %}{{ project.end_date or t.projects.ongoing }}
+                </div>
+            </div>
+            {% if project.description %}
+            <div class="description">{{ project.description|format_markdown|safe }}</div>
+            {% endif %}
+            {% if project.achievements %}
+            <div class="description">
+                <strong>{{ t.projects.achievements }}:</strong>
+                {{ project.achievements|format_markdown|safe }}
+            </div>
+            {% endif %}
+            {% if project.project_url or project.github_url %}
+            <div class="description">
+                {% if project.project_url %}<a href="{{ project.project_url }}">{{ t.projects.project_url_link }}</a>{% endif %}
+                {% if project.github_url %}{% if project.project_url %} | {% endif %}<a href="{{ project.github_url }}">{{ t.projects.github_repo }}</a>{% endif %}
+            </div>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+</body>
+</html>

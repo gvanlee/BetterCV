@@ -7,6 +7,7 @@ from dotenv import load_dotenv
 import json
 import os
 import uuid
+import sqlite3
 from google import genai
 from groq import Groq
 import PyPDF2
@@ -98,6 +99,61 @@ def get_translation(key, lang=None):
     
     return value
 
+def format_markdown_text(text):
+    """Convert simple markdown (lines starting with *) to HTML."""
+    if not text:
+        return text
+    
+    lines = text.strip().split('\n')
+    result = []
+    in_list = False
+    
+    for line in lines:
+        line = line.strip()
+        if not line:
+            if in_list:
+                result.append('</ul>')
+                in_list = False
+            result.append('<br>')
+            continue
+        
+        if line.startswith('* '):
+            if not in_list:
+                result.append('<ul>')
+                in_list = True
+            result.append(f'<li>{line[2:]}</li>')
+        else:
+            if in_list:
+                result.append('</ul>')
+                in_list = False
+            result.append(f'<p>{line}</p>')
+    
+    if in_list:
+        result.append('</ul>')
+    
+    return '\n'.join(result)
+
+def extract_list_items(text):
+    """Extract bulleted list items from markdown text for Word export."""
+    if not text:
+        return [], []
+    
+    lines = text.strip().split('\n')
+    list_items = []
+    paragraph_items = []
+    
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        
+        if line.startswith('* '):
+            list_items.append(line[2:])
+        else:
+            paragraph_items.append(line)
+    
+    return list_items, paragraph_items
+
 @app.context_processor
 def inject_translations():
     """Make translation function and current language available to all templates."""
@@ -122,8 +178,12 @@ def inject_translations():
         'available_languages': {
             'en': 'English',
             'nl': 'Nederlands'
-        }
+        },
+        'format_markdown_text': format_markdown_text
     }
+
+# Register custom Jinja filters
+app.jinja_env.filters['format_markdown'] = format_markdown_text
 
 @app.route('/set-language/<lang>')
 def set_language(lang):
@@ -269,13 +329,20 @@ def admin_dashboard():
     """Admin dashboard"""
     users = get_all_users()
     whitelist = get_all_whitelist()
-    consultants = get_all_consultants()
     skill_categories = get_skill_categories()
     return render_template('admin.html', 
                          users=users, 
-                         whitelist=whitelist, 
-                         all_consultants=consultants,
+                         whitelist=whitelist,
                          skill_categories=skill_categories)
+
+
+@app.route('/consultants-management')
+@admin_required
+def consultants_management():
+    """Consultants management page"""
+    consultants = get_all_consultants()
+    return render_template('consultants_management.html',
+                         all_consultants=consultants)
 
 
 @app.route('/admin/skill-categories/add', methods=['POST'])
@@ -424,7 +491,19 @@ def ensure_consultant_selected():
         'export_consultant',
         'parse_cv',
         'review_parsed_cv',
-        'import_parsed_cv'
+        'import_parsed_cv',
+        'export_cv',
+        'preview_cv',
+        'export_cv_download',
+        'consultants_management',
+        'admin_dashboard',
+        'admin_add_whitelist',
+        'admin_remove_whitelist',
+        'admin_update_user_role',
+        'admin_deactivate_user',
+        'admin_add_skill_category',
+        'admin_delete_skill_category',
+        'delete_consultant'
     }:
         return None
 
@@ -438,7 +517,7 @@ def ensure_consultant_selected():
     conn.close()
 
     if consultant_id is None:
-        return redirect(url_for('admin_dashboard'))
+        return redirect(url_for('consultants_management'))
 
     return None
 
@@ -576,7 +655,8 @@ The JSON should match this exact schema:
     "last_name": "Last Name", 
     "email": "email@example.com",
     "phone": "Phone Number",
-    "address": "Full Address",
+    "address": "Full Address (street and number)",
+    "zip_code": "Postal Code or Zip Code",
     "city": "City",
     "country": "Country",
     "summary": "Professional summary or objective"
@@ -608,7 +688,7 @@ The JSON should match this exact schema:
   ],
   "skills": [
     {{
-      "category": "Category (e.g., Programming, Languages, etc.)",
+      "category": "Category (one of: 'Data Analytics', 'Data Engineering', 'Data Management', 'Data Modeling', 'Databases', 'Database Administration', 'Languages', 'Operating Systems', 'Programming Languages', 'Tools' or 'Various'), attempt to map as close as possible",
       "name": "Skill Name",
       "proficiency": "Proficiency Level",
       "description": "Optional description"
@@ -625,7 +705,7 @@ The JSON should match this exact schema:
   ],
   "certifications": [
     {{
-      "name": "Certification Name or course Name",
+      "name": "Certification Name/Course Name or name of issuing organization if specific certification name is not mentioned",
       "issuing_organization": "Issuing Organization",
       "issue_date": "YYYY-MM-DD",
       "expiry_date": "YYYY-MM-DD or null",
@@ -666,7 +746,7 @@ def parse_cv_with_ai(cv_text, provider='gemini'):
         
         try:
             response = genai_client.models.generate_content(
-                model='gemini-2.0-flash',
+                model='gemini-flash-latest',
                 contents=prompt
             )
             if not response.text:
@@ -752,7 +832,7 @@ def add_consultant():
 
     session['consultant_id'] = consultant_id
     flash(get_translation('messages.consultant_added'), 'success')
-    return redirect(url_for('view_personal_info'))
+    return redirect(url_for('consultants_management'))
 
 
 @app.route('/consultants/switch/<int:consultant_id>')
@@ -768,10 +848,10 @@ def switch_consultant(consultant_id):
 
     if not existing:
         flash(get_translation('messages.consultant_not_found'), 'error')
-        return redirect(url_for('admin_dashboard'))
+        return redirect(url_for('consultants_management'))
 
     session['consultant_id'] = consultant_id
-    return redirect(request.referrer or url_for('index'))
+    return redirect(request.referrer or url_for('consultants_management'))
 
 
 def parse_import_payload(payload):
@@ -875,20 +955,29 @@ def import_consultant_data(conn, consultant_id, payload):
     categories_rows = conn.execute('SELECT id, name FROM skill_categories').fetchall()
     cat_map = {c['name'].lower(): c['id'] for c in categories_rows}
     
+    # Ensure "Various" category exists for unknown categories
+    if 'various' not in cat_map:
+        conn.execute('INSERT INTO skill_categories (name) VALUES (?)', ('Various',))
+        conn.commit()
+        categories_rows = conn.execute('SELECT id, name FROM skill_categories').fetchall()
+        cat_map = {c['name'].lower(): c['id'] for c in categories_rows}
+    
     # Track inserted skills by name to link to experience/projects
     skill_name_to_id = {}
 
     for skill in payload.get('skills', []):
         cat_name = skill.get('category_name', skill.get('category', '')).strip()
         
-        # Ensure category exists in the system
+        # Map category name to existing category
+        # If category doesn't exist, use "Various"
+        category_id = None
         if cat_name:
-            conn.execute('INSERT OR IGNORE INTO skill_categories (name) VALUES (?)', (cat_name,))
-            # Refresh cat_map to include the potentially new category
-            categories_rows = conn.execute('SELECT id, name FROM skill_categories').fetchall()
-            cat_map = {c['name'].lower(): c['id'] for c in categories_rows}
-            
-        category_id = cat_map.get(cat_name.lower()) if cat_name else None
+            category_lower = cat_name.lower()
+            if category_lower in cat_map:
+                category_id = cat_map[category_lower]
+            else:
+                # Unknown category - map to "Various"
+                category_id = cat_map.get('various')
         
         cursor = conn.execute('''
             INSERT INTO skills (
@@ -1209,14 +1298,14 @@ def delete_consultant(consultant_id):
     if not consultant:
         conn.close()
         flash(get_translation('messages.consultant_not_found'), 'error')
-        return redirect(url_for('admin_dashboard'))
+        return redirect(url_for('consultants_management'))
     
     # Prevent deleting if this is the only consultant
     consultant_count = conn.execute('SELECT COUNT(*) FROM consultants').fetchone()[0]
     if consultant_count <= 1:
         conn.close()
         flash(get_translation('messages.consultant_delete_last'), 'error')
-        return redirect(url_for('admin_dashboard'))
+        return redirect(url_for('consultants_management'))
     
     # If deleting current consultant, switch to another one
     current_consultant_id = session.get('consultant_id')
@@ -1246,7 +1335,7 @@ def delete_consultant(consultant_id):
     conn.close()
     
     flash(get_translation('messages.consultant_deleted'), 'success')
-    return redirect(url_for('admin_dashboard'))
+    return redirect(url_for('consultants_management'))
 
 
 @app.route('/consultants/export/<int:consultant_id>')
@@ -2099,6 +2188,482 @@ def delete_certification(id):
     return redirect(url_for('view_certifications'))
 
 
+# ==================== CV Export Routes ====================
+
+@app.route('/export-cv')
+@login_required
+def export_cv():
+    """Display CV export page."""
+    conn = get_db_connection()
+    consultant_id = resolve_current_consultant_id(conn)
+    
+    # Check if there's any data to export
+    personal_info = conn.execute(
+        'SELECT * FROM personal_info WHERE consultant_id = ?',
+        (consultant_id,)
+    ).fetchone()
+    
+    work_count = conn.execute(
+        'SELECT COUNT(*) as count FROM work_experience WHERE consultant_id = ?',
+        (consultant_id,)
+    ).fetchone()['count']
+    
+    conn.close()
+    
+    has_data = personal_info is not None or work_count > 0
+    
+    return render_template('export_cv.html', has_data=has_data)
+
+
+@app.route('/export-cv/preview')
+@login_required
+def preview_cv():
+    """Preview CV in HTML format."""
+    conn = get_db_connection()
+    consultant_id = resolve_current_consultant_id(conn)
+    
+    # Get all CV data
+    cv_data = get_cv_data(conn, consultant_id)
+    conn.close()
+    
+    return render_template('cv_template.html', **cv_data)
+
+
+@app.route('/export-cv/download', methods=['POST'])
+@login_required
+def export_cv_download():
+    """Download CV in selected format."""
+    format_type = request.form.get('format', 'html')
+    
+    conn = get_db_connection()
+    consultant_id = resolve_current_consultant_id(conn)
+    
+    # Get all CV data
+    cv_data = get_cv_data(conn, consultant_id)
+    conn.close()
+    
+    # Get consultant name for filename
+    if cv_data['personal_info']:
+        filename = f"CV_{cv_data['personal_info']['first_name']}_{cv_data['personal_info']['last_name']}"
+    else:
+        filename = "CV_Export"
+    
+    if format_type == 'html':
+        html_content = render_template('cv_template.html', **cv_data)
+        return Response(
+            html_content,
+            mimetype='text/html',
+            headers={'Content-Disposition': f'attachment;filename={filename}.html'}
+        )
+    
+    elif format_type == 'pdf':
+        try:
+            import pdfkit
+            html_content = render_template('cv_template.html', **cv_data)
+            pdf = pdfkit.from_string(html_content, False)
+            return Response(
+                pdf,
+                mimetype='application/pdf',
+                headers={'Content-Disposition': f'attachment;filename={filename}.pdf'}
+            )
+        except Exception as e:
+            flash(f'PDF generation failed: {str(e)}. Please install wkhtmltopdf or use HTML export.', 'error')
+            return redirect(url_for('export_cv'))
+    
+    elif format_type == 'docx':
+        try:
+            from docx import Document
+            from docx.shared import Pt, RGBColor, Inches
+            from docx.enum.text import WD_ALIGN_PARAGRAPH
+            
+            doc = Document()
+            
+            def add_formatted_text(text, label=None):
+                """Add text with markdown support to Word document."""
+                if not text:
+                    return
+                
+                list_items, paragraphs = extract_list_items(text)
+                
+                # Add label if provided
+                if label:
+                    p = doc.add_paragraph()
+                    p.add_run(f"{label}: ").bold = True
+                    if paragraphs and not list_items:
+                        p.add_run(paragraphs[0])
+                        paragraphs = paragraphs[1:]
+                
+                # Add remaining paragraphs
+                for para in paragraphs:
+                    doc.add_paragraph(para)
+                
+                # Add bullet list items
+                for item in list_items:
+                    doc.add_paragraph(item, style='List Bullet')
+            
+            # Add personal info header
+            if cv_data['personal_info']:
+                pi = cv_data['personal_info']
+                heading = doc.add_heading(f"{pi['first_name']} {pi['last_name']}", 0)
+                heading.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                
+                contact_lines = []
+                if pi['email']:
+                    contact_lines.append(pi['email'])
+                if pi['phone']:
+                    contact_lines.append(pi['phone'])
+                
+                address_parts = []
+                if pi['address']:
+                    address_parts.append(pi['address'])
+                if pi['city']:
+                    address_parts.append(pi['city'])
+                if pi['state']:
+                    address_parts.append(pi['state'])
+                if pi['zip_code']:
+                    address_parts.append(pi['zip_code'])
+                if pi['country']:
+                    address_parts.append(pi['country'])
+                
+                if address_parts:
+                    contact_lines.append(', '.join(address_parts))
+                
+                for line in contact_lines:
+                    p = doc.add_paragraph(line)
+                    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                
+                # Links
+                links = []
+                if pi['linkedin_url']:
+                    links.append(f"LinkedIn: {pi['linkedin_url']}")
+                if pi['github_url']:
+                    links.append(f"GitHub: {pi['github_url']}")
+                if pi['portfolio_url']:
+                    links.append(f"Portfolio: {pi['portfolio_url']}")
+                
+                if links:
+                    p = doc.add_paragraph(' | '.join(links))
+                    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                
+                doc.add_paragraph()  # Space
+                
+                # Professional summary
+                if pi['professional_summary']:
+                    doc.add_heading(get_translation('personal_info.professional_summary'), 1)
+                    doc.add_paragraph(pi['professional_summary'])
+            
+            # Work Experience
+            if cv_data['work_experiences']:
+                doc.add_heading(get_translation('work_experience.title'), 1)
+                for exp in cv_data['work_experiences']:
+                    doc.add_heading(exp['position_title'], 2)
+                    company_para = doc.add_paragraph()
+                    company_para.add_run(exp['company_name']).bold = True
+                    
+                    date_str = f"{exp['start_date']} - "
+                    if exp['is_current']:
+                        date_str += get_translation('work_experience.present')
+                    else:
+                        date_str += exp['end_date'] or get_translation('common.na')
+                    
+                    if exp['location']:
+                        date_str = f"{exp['location']} | {date_str}"
+                    
+                    doc.add_paragraph(date_str)
+                    
+                    if exp['description']:
+                        add_formatted_text(exp['description'])
+                    
+                    if exp['achievements']:
+                        add_formatted_text(exp['achievements'], get_translation('work_experience.achievements'))
+                    
+                    if exp['star_situation'] or exp['star_tasks'] or exp['star_actions'] or exp['star_results']:
+                        if exp['star_situation']:
+                            add_formatted_text(exp['star_situation'], get_translation('work_experience.star_situation'))
+                        if exp['star_tasks']:
+                            add_formatted_text(exp['star_tasks'], get_translation('work_experience.star_tasks'))
+                        if exp['star_actions']:
+                            add_formatted_text(exp['star_actions'], get_translation('work_experience.star_actions'))
+                        if exp['star_results']:
+                            add_formatted_text(exp['star_results'], get_translation('work_experience.star_results'))
+            
+            # Education
+            if cv_data['education']:
+                doc.add_heading(get_translation('education.title'), 1)
+                for edu in cv_data['education']:
+                    degree_str = edu['degree']
+                    if edu['field_of_study']:
+                        degree_str += f" - {edu['field_of_study']}"
+                    doc.add_heading(degree_str, 2)
+                    
+                    inst_para = doc.add_paragraph()
+                    inst_para.add_run(edu['institution_name']).bold = True
+                    
+                    date_str = ""
+                    if edu['start_date']:
+                        date_str = f"{edu['start_date']} - "
+                    date_str += edu['end_date'] or get_translation('education.in_progress')
+                    
+                    if edu['location']:
+                        date_str = f"{edu['location']} | {date_str}"
+                    
+                    doc.add_paragraph(date_str)
+                    
+                    if edu['gpa']:
+                        p = doc.add_paragraph()
+                        p.add_run(f"{get_translation('education.gpa')}: ").bold = True
+                        p.add_run(edu['gpa'])
+                    
+                    if edu['honors']:
+                        p = doc.add_paragraph()
+                        p.add_run(f"{get_translation('education.honors')}: ").bold = True
+                        p.add_run(edu['honors'])
+                    
+                    if edu['description']:
+                        add_formatted_text(edu['description'])
+            
+            # Certifications
+            if cv_data['certifications']:
+                doc.add_heading(get_translation('certifications.title'), 1)
+                for cert in cv_data['certifications']:
+                    doc.add_heading(cert['certification_name'], 2)
+                    
+                    org_para = doc.add_paragraph()
+                    org_para.add_run(cert['issuing_organization']).bold = True
+                    
+                    date_str = f"{get_translation('certifications.issued')}: {cert['issue_date']}"
+                    if cert['expiration_date']:
+                        date_str += f" | {get_translation('certifications.expires')}: {cert['expiration_date']}"
+                    
+                    doc.add_paragraph(date_str)
+                    
+                    if cert['credential_id']:
+                        p = doc.add_paragraph()
+                        p.add_run(f"{get_translation('certifications.credential_id')}: ").bold = True
+                        p.add_run(cert['credential_id'])
+                    
+                    if cert['credential_url']:
+                        doc.add_paragraph(cert['credential_url'])
+                    
+                    if cert['description']:
+                        add_formatted_text(cert['description'])
+            
+            # Skills
+            if cv_data['skills_by_category']:
+                doc.add_heading(get_translation('skills.title'), 1)
+                for category_name, skills in cv_data['skills_by_category'].items():
+                    p = doc.add_paragraph()
+                    p.add_run(f"{category_name}: ").bold = True
+                    skill_names = []
+                    for skill in skills:
+                        skill_str = skill['skill_name']
+                        if skill['proficiency_level']:
+                            skill_str += f" ({skill['proficiency_level']})"
+                        skill_names.append(skill_str)
+                    p.add_run(', '.join(skill_names))
+            
+            # Projects
+            if cv_data['projects']:
+                doc.add_heading(get_translation('projects.title'), 1)
+                for project in cv_data['projects']:
+                    doc.add_heading(project['project_name'], 2)
+                    
+                    if project['role']:
+                        role_para = doc.add_paragraph()
+                        role_para.add_run(project['role']).bold = True
+                    
+                    date_str = ""
+                    if project['start_date']:
+                        date_str = f"{project['start_date']} - "
+                    date_str += project['end_date'] or get_translation('projects.ongoing')
+                    doc.add_paragraph(date_str)
+                    
+                    if project['description']:
+                        add_formatted_text(project['description'])
+                    
+                    if project['achievements']:
+                        add_formatted_text(project['achievements'], get_translation('projects.achievements'))
+                    
+                    if project['project_url'] or project['github_url']:
+                        links = []
+                        if project['project_url']:
+                            links.append(f"{get_translation('projects.project_url_link')}: {project['project_url']}")
+                        if project['github_url']:
+                            links.append(f"{get_translation('projects.github_repo')}: {project['github_url']}")
+                        doc.add_paragraph(' | '.join(links))
+            
+            # Save to BytesIO
+            from io import BytesIO
+            doc_io = BytesIO()
+            doc.save(doc_io)
+            doc_io.seek(0)
+            
+            return Response(
+                doc_io.getvalue(),
+                mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                headers={'Content-Disposition': f'attachment;filename={filename}.docx'}
+            )
+            
+        except Exception as e:
+            flash(f'Word document generation failed: {str(e)}', 'error')
+            return redirect(url_for('export_cv'))
+    
+    elif format_type == 'json':
+        # Export as JSON (similar to export_consultant but for current consultant)
+        conn = get_db_connection()
+        consultant_id = resolve_current_consultant_id(conn)
+        
+        consultant = conn.execute(
+            'SELECT id, display_name FROM consultants WHERE id = ?',
+            (consultant_id,)
+        ).fetchone()
+        
+        payload = {
+            'version': 1,
+            'consultant': {
+                'display_name': consultant['display_name'] if consultant else 'Unknown'
+            },
+            'personal_info': None,
+            'work_experience': [],
+            'education': [],
+            'skills': [],
+            'projects': [],
+            'certifications': []
+        }
+
+        personal_info = conn.execute(
+            'SELECT * FROM personal_info WHERE consultant_id = ? ORDER BY id DESC LIMIT 1',
+            (consultant_id,)
+        ).fetchone()
+        if personal_info:
+            payload['personal_info'] = dict(personal_info)
+            payload['personal_info'].pop('id', None)
+            payload['personal_info'].pop('consultant_id', None)
+            payload['personal_info'].pop('created_at', None)
+            payload['personal_info'].pop('updated_at', None)
+
+        for table, key in [
+            ('work_experience', 'work_experience'),
+            ('education', 'education'),
+            ('skills', 'skills'),
+            ('projects', 'projects'),
+            ('certifications', 'certifications')
+        ]:
+            rows = conn.execute(
+                f'SELECT * FROM {table} WHERE consultant_id = ? ORDER BY id',
+                (consultant_id,)
+            ).fetchall()
+            payload[key] = []
+            for row in rows:
+                row_data = dict(row)
+                
+                # Special handling for skills to include category name
+                if table == 'skills' and row_data.get('category_id'):
+                    cat = conn.execute('SELECT name FROM skill_categories WHERE id = ?', (row_data['category_id'],)).fetchone()
+                    if cat:
+                        row_data['category_name'] = cat['name']
+
+                # Special handling for experience and projects to include linked skills
+                if table == 'work_experience':
+                    skills = conn.execute('''
+                        SELECT s.skill_name 
+                        FROM skills s
+                        JOIN experience_skills es ON s.id = es.skill_id
+                        WHERE es.experience_id = ?
+                    ''', (row['id'],)).fetchall()
+                    row_data['skills'] = [s['skill_name'] for s in skills]
+                
+                if table == 'projects':
+                    skills = conn.execute('''
+                        SELECT s.skill_name 
+                        FROM skills s
+                        JOIN project_skills ps ON s.id = ps.skill_id
+                        WHERE ps.project_id = ?
+                    ''', (row['id'],)).fetchall()
+                    row_data['skills'] = [s['skill_name'] for s in skills]
+
+                row_data.pop('id', None)
+                row_data.pop('consultant_id', None)
+                row_data.pop('created_at', None)
+                row_data.pop('updated_at', None)
+                row_data.pop('category', None)  # Remove old text category field if exists
+                row_data.pop('years_of_experience', None)  # Remove legacy field if it exists
+                payload[key].append(row_data)
+
+        conn.close()
+        
+        return Response(
+            json.dumps(payload, indent=2),
+            mimetype='application/json',
+            headers={'Content-Disposition': f'attachment;filename={filename}.json'}
+        )
+    
+    flash('Invalid format selected', 'error')
+    return redirect(url_for('export_cv'))
+
+
+def get_cv_data(conn, consultant_id):
+    """Helper function to retrieve all CV data for a consultant."""
+    
+    # Personal Info
+    personal_info = conn.execute(
+        'SELECT * FROM personal_info WHERE consultant_id = ?',
+        (consultant_id,)
+    ).fetchone()
+    
+    # Work Experience
+    work_experiences = conn.execute(
+        'SELECT * FROM work_experience WHERE consultant_id = ? ORDER BY display_order, start_date DESC',
+        (consultant_id,)
+    ).fetchall()
+    
+    # Education
+    education = conn.execute(
+        'SELECT * FROM education WHERE consultant_id = ? ORDER BY display_order, start_date DESC',
+        (consultant_id,)
+    ).fetchall()
+    
+    # Certifications
+    certifications = conn.execute(
+        'SELECT * FROM certifications WHERE consultant_id = ? ORDER BY display_order, issue_date DESC',
+        (consultant_id,)
+    ).fetchall()
+    
+    # Skills grouped by category
+    skills = conn.execute('''
+        SELECT s.*, c.name as category_name
+        FROM skills s
+        LEFT JOIN skill_categories c ON s.category_id = c.id
+        WHERE s.consultant_id = ?
+        ORDER BY c.name, s.display_order, s.skill_name
+    ''', (consultant_id,)).fetchall()
+    
+    skills_by_category = {}
+    for skill in skills:
+        category = skill['category_name'] or get_translation('skills.uncategorized')
+        if category not in skills_by_category:
+            skills_by_category[category] = []
+        skills_by_category[category].append(skill)
+    
+    # Projects
+    projects = conn.execute(
+        'SELECT * FROM projects WHERE consultant_id = ? ORDER BY display_order, start_date DESC',
+        (consultant_id,)
+    ).fetchall()
+    
+    return {
+        'personal_info': personal_info,
+        'work_experiences': work_experiences,
+        'education': education,
+        'certifications': certifications,
+        'skills_by_category': skills_by_category,
+        'projects': projects,
+        't': TRANSLATIONS.get(session.get('language', 'en'), TRANSLATIONS['en']),
+        'current_lang': session.get('language', 'en')
+    }
+
+
 if __name__ == '__main__':
     init_database()
     app.run(debug=True, host='0.0.0.0', port=5000)
+

@@ -176,16 +176,17 @@ def init_database():
 
     # Seed default categories
     default_categories = [
-        'Data Engineering',
-        'Data Modeling',
-        'Data Management',
         'Data Analytics',
-        'Tools',
+        'Data Engineering',
+        'Data Management',
+        'Data Modeling',
         'Databases',
+        'Database Administration',
+        'Languages',
         'Operating Systems',
         'Programming Languages',
-        'Languages',
-        'Database Administration'
+        'Tools',
+        'Various'
     ]
     
     for cat_name in default_categories:

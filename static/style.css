@@ -142,6 +142,10 @@ body {
     box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.1);
 }
 
+.section-header {
+    margin-bottom: 12px;;
+}
+
 /* ===== Container & Layout ===== */
 .container {
     max-width: 1200px;
@@ -694,12 +698,14 @@ body {
 
 .badge {
     display: inline-block;
-    padding: 0.25rem 0.5rem;
+    padding: 0.25rem 0.75rem;
+    margin-bottom: 0.25rem;
+    border-radius: 12px;
     background-color: var(--primary-color);
     color: var(--button-primary);
-    border-radius: 4px;
-    font-size: 0.75rem;
-    font-weight: 500;
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
 }
 
 .text-muted {
@@ -1096,15 +1102,6 @@ footer p {
 
 .admin-table tr:hover {
     background: var(--background);
-}
-
-.badge {
-    display: inline-block;
-    padding: 0.25rem 0.75rem;
-    border-radius: 12px;
-    font-size: 0.75rem;
-    font-weight: 600;
-    text-transform: uppercase;
 }
 
 .badge.badge-admin {

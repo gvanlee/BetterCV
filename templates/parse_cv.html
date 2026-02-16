@@ -35,7 +35,7 @@
             <div class="form-group">
                 <label for="ai_provider">{{ t.cv_parsing.ai_model_label }}</label>
                 <select id="ai_provider" name="ai_provider">
-                    <option value="gemini">Google Gemini (Flash 1.5/2.0)</option>
+                    <option value="gemini">Google Gemini</option>
                     <option value="groq" {% if not has_groq %}disabled{% endif %}>Groq (Llama 3.3 70B)</option>
                 </select>
                 <small class="form-hint">{{ t.cv_parsing.ai_model_hint }}</small>

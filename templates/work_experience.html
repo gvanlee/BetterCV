@@ -27,7 +27,7 @@
             </div>
             <div class="info-item">
                 <label>{{ t.work_experience.period }}:</label>
-                <span>{{ exp['start_date'] }} - {% if exp['is_current'] %}{{ t.work_experience.present }}{% else %}{{ exp['end_date'] or t.common.na }}{% endif %}</span>
+                <span>{{ exp['start_date'] }} - {% if exp['is_current'] %}{{ t.work_experience.present }}{% else %}{{ exp['end_date'] or t.common.no_end_date }}{% endif %}</span>
             </div>
         </div>
         

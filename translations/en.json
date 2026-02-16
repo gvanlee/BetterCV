@@ -30,7 +30,9 @@
     "certifications_title": "Certifications",
     "certifications_desc": "Keep track of your professional certifications",
     "consultants_title": "Consultants",
-    "consultants_desc": "Add, switch, import, or export consultant profiles"
+    "consultants_desc": "Add, switch, import, or export consultant profiles",
+    "export_cv_title": "Export CV",
+    "export_cv_desc": "Download your CV as PDF or Word document"
   },
   
   "buttons": {
@@ -289,6 +291,7 @@
   "common": {
     "required": "*",
     "na": "N/A",
+    "no_end_date": "Now",
     "name": "Name",
     "description": "Description",
     "technologies": "Technologies"
@@ -366,6 +369,22 @@
   "roles": {
     "admin": "Admin",
     "consultant": "Consultant"
+  },
+  
+  "export_cv": {
+    "title": "Export CV",
+    "subtitle": "Download your CV in your preferred format",
+    "format_label": "Export Format",
+    "format_pdf": "PDF Document",
+    "format_docx": "Word Document (.docx)",
+    "format_html": "HTML (Preview in Browser)",
+    "format_json": "JSON (Raw Data)",
+    "format_help": "Select the format for your CV export",
+    "export_button": "Export CV",
+    "preview_button": "Preview CV",
+    "no_data_warning": "You need to add some information to your CV before exporting.",
+    "generating": "Generating your CV...",
+    "success": "CV exported successfully!"
   },
   
   "footer": {

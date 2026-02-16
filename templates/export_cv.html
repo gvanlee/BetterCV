@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+
+{% block title %}{{ t.export_cv.title }} - {{ t.app_name }}{% endblock %}
+
+{% block content %}
+<div class="section-header">
+    <div>
+        <h2>{{ t.export_cv.title }}</h2>
+        <p class="subtitle">{{ t.export_cv.subtitle }}</p>
+    </div>
+</div>
+
+<div class="card">
+    <form method="POST" action="{{ url_for('export_cv_download') }}">
+        <div class="form-group">
+            <label for="format">{{ t.export_cv.format_label }}</label>
+            <select id="format" name="format" required>
+                <option value="html">{{ t.export_cv.format_html }}</option>
+                <option value="pdf">{{ t.export_cv.format_pdf }}</option>
+                <option value="docx">{{ t.export_cv.format_docx }}</option>
+                <option value="json">{{ t.export_cv.format_json }}</option>
+            </select>
+            <small>{{ t.export_cv.format_help }}</small>
+        </div>
+
+        <div class="form-actions">
+            <button type="submit" class="btn btn-primary">{{ t.export_cv.export_button }}</button>
+            <a href="{{ url_for('preview_cv') }}" class="btn btn-secondary" target="_blank">{{ t.export_cv.preview_button }}</a>
+            <a href="{{ url_for('index') }}" class="btn btn-secondary">{{ t.buttons.cancel }}</a>
+        </div>
+    </form>
+</div>
+
+{% if not has_data %}
+<div class="alert alert-info">
+    {{ t.export_cv.no_data_warning }}
+</div>
+{% endif %}
+
+{% endblock %}

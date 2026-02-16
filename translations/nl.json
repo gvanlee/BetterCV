@@ -30,7 +30,9 @@
     "certifications_title": "Certificaten",
     "certifications_desc": "Houd uw professionele certificaten bij",
     "consultants_title": "Consultants",
-    "consultants_desc": "Consultantprofielen toevoegen, wisselen, importeren of exporteren"
+    "consultants_desc": "Consultantprofielen toevoegen, wisselen, importeren of exporteren",
+    "export_cv_title": "CV Exporteren",
+    "export_cv_desc": "Download uw CV als PDF of Word-document"
   },
   
   "buttons": {
@@ -290,6 +292,7 @@
     "required": "*",
     "na": "N.v.t.",
     "name": "Naam",
+    "no_end_date": "Nu",
     "description": "Beschrijving",
     "technologies": "Technologieën"
   },
@@ -366,6 +369,22 @@
   "roles": {
     "admin": "Beheerder",
     "consultant": "Consultant"
+  },
+  
+  "export_cv": {
+    "title": "CV Exporteren",
+    "subtitle": "Download uw CV in uw gewenste formaat",
+    "format_label": "Exportformaat",
+    "format_pdf": "PDF-document",
+    "format_docx": "Word-document (.docx)",
+    "format_html": "HTML (Voorbeeld in Browser)",
+    "format_json": "JSON (Ruwe Data)",
+    "format_help": "Selecteer het formaat voor uw CV-export",
+    "export_button": "CV Exporteren",
+    "preview_button": "CV Voorbeeld",
+    "no_data_warning": "U moet eerst informatie toevoegen aan uw CV voordat u kunt exporteren.",
+    "generating": "Uw CV wordt gegenereerd...",
+    "success": "CV succesvol geëxporteerd!"
   },
   
   "footer": {

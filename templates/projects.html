@@ -30,7 +30,7 @@
             {% if project['start_date'] or project['end_date'] %}
             <div class="info-item">
                 <label>{{ t.projects.period }}:</label>
-                <span>{{ project['start_date'] or t.common.na }} - {{ project['end_date'] or t.projects.ongoing }}</span>
+                <span>{{ project['start_date'] or t.common.na }} - {{ project['end_date'] or t.common.no_end_date }}</span>
             </div>
             {% endif %}
         </div>

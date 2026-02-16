@@ -1,0 +1,162 @@
+{% extends "base.html" %}
+
+{% block title %}{{ t.consultants.title }} - {{ t.app_name }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h2>{{ t.consultants.title }}</h2>
+</div>
+
+<div class="admin-container">
+    <!-- Consultant Management -->
+    <div class="admin-section">
+        <div class="admin-section-header">
+            <h3>{{ t.consultants.title }}</h3>
+            <div class="header-actions">
+                <a href="{{ url_for('parse_cv') }}" class="btn btn-primary">{{ t.cv_parsing.parse_cv_button }}</a>
+                <a href="{{ url_for('import_consultant') }}" class="btn btn-secondary">{{ t.consultants.import_button }}</a>
+            </div>
+        </div>
+
+        {% if all_consultants %}
+        <div class="consultant-list">
+            {% for consultant in all_consultants %}
+            {% set is_current = current_consultant and consultant['id'] == current_consultant['id'] %}
+            <div class="consultant-row">
+                <span class="consultant-name{% if is_current %} is-active{% endif %}">{{ consultant['display_name'] }}</span>
+                <div class="consultant-actions">
+                    {% if not is_current %}
+                    <a href="{{ url_for('switch_consultant', consultant_id=consultant['id']) }}" class="btn btn-small btn-primary">{{ t.consultants.switch_button }}</a>
+                    {% endif %}
+                    <form method="POST" action="{{ url_for('delete_consultant', consultant_id=consultant['id']) }}"
+                          style="display: inline;" onsubmit="return confirm('{{ t.messages.delete_confirm_consultant }}');">
+                        <button type="submit" class="btn btn-small btn-danger">{{ t.buttons.delete }}</button>
+                    </form>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="empty-state">
+            <p>{{ t.consultants.no_data }}</p>
+        </div>
+        {% endif %}
+
+        <form method="POST" action="{{ url_for('add_consultant') }}" class="form form-compact">
+            <div class="form-section">
+                <h3>{{ t.consultants.add_title }}</h3>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="display_name">{{ t.consultants.display_name }} *</label>
+                        <input type="text" id="display_name" name="display_name" required>
+                    </div>
+                </div>
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-primary">{{ t.consultants.add_button }}</button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+<style>
+.admin-container {
+    display: flex;
+    flex-direction: column;
+    gap: 2rem;
+}
+
+.admin-section {
+    background: var(--card-background);
+    border-radius: 8px;
+    padding: 2rem;
+    box-shadow: var(--shadow);
+}
+
+.admin-section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+    border-bottom: 2px solid var(--border-color);
+    padding-bottom: 0.5rem;
+}
+
+.admin-section h3 {
+    margin-bottom: 1.5rem;
+    color: var(--primary-color);
+    border-bottom: 2px solid var(--border-color);
+    padding-bottom: 0.5rem;
+}
+
+.admin-section-header h3 {
+    margin-bottom: 0;
+    border-bottom: none;
+    padding-bottom: 0;
+}
+
+.header-actions {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.consultant-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    margin-bottom: 2rem;
+}
+
+.consultant-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: var(--background);
+}
+
+.consultant-name {
+    padding: 0.2rem 0.5rem;
+    border-radius: 6px;
+    border: 1px solid transparent;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.consultant-name.is-active {
+    border-color: var(--primary-color);
+}
+
+.consultant-actions {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+}
+
+@media (max-width: 768px) {
+    .admin-section-header {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .header-actions {
+        width: 100%;
+        justify-content: flex-start;
+    }
+
+    .consultant-row {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .consultant-actions {
+        width: 100%;
+        justify-content: flex-end;
+    }
+}
+</style>
+{% endblock %}
