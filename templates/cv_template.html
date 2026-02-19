@@ -19,30 +19,35 @@
             margin: 0 auto;
             padding: 20mm;
             background: white;
+            font-size: 11px;
         }
         
         h1 {
             color: #2c3e50;
-            font-size: 2.5em;
+            font-size: 2em;
             margin-bottom: 0.3em;
-            border-bottom: 3px solid #3498db;
+            border-bottom: 3px solid #f5af02;
             padding-bottom: 0.3em;
         }
         
         h2 {
             color: #2c3e50;
-            font-size: 1.8em;
+            font-size: 1.4em;
             margin-top: 1.5em;
             margin-bottom: 0.5em;
-            border-bottom: 2px solid #3498db;
+            border-bottom: 2px solid #f5af02;
             padding-bottom: 0.2em;
         }
-        
+
         h3 {
             color: #34495e;
-            font-size: 1.3em;
+            font-size: 1.2em;
             margin-top: 0.8em;
             margin-bottom: 0.3em;
+        }
+        
+        .experience-section h3 {
+            background-color: #e0e0e0;
         }
         
         h4 {
@@ -75,7 +80,6 @@
         }
         
         .entry {
-            margin-bottom: 1.5em;
             page-break-inside: avoid;
         }
         
@@ -95,17 +99,22 @@
         
         .entry-date {
             color: #95a5a6;
-            font-size: 0.9em;
+            font-size: 0.8em;
+            float: right;
         }
         
         .entry-location {
             color: #7f8c8d;
-            font-size: 0.95em;
+            font-size: 0.85em;
+        }
+
+        .experience-section {
+            margin-bottom: 2em;
         }
         
         .description {
             margin-top: 0.5em;
-            text-align: justify;
+            text-align: left;
         }
         
         .description p {
@@ -114,7 +123,7 @@
         
         .description ul {
             margin: 0.3em 0;
-            padding-left: 1.5em;
+            padding-left: 1em;
         }
         
         .description li {
@@ -132,11 +141,11 @@
             background: #ecf0f1;
             padding: 0.4em 0.8em;
             border-radius: 4px;
-            font-size: 0.95em;
+            font-size: 0.9em;
         }
         
         .skill-category {
-            margin-bottom: 1em;
+            margin-bottom: 0.5em;
         }
         
         .skill-category-title {
@@ -152,7 +161,7 @@
         }
         
         ul {
-            margin-left: 1.5em;
+            margin-left: 1em;
             margin-top: 0.3em;
         }
         
@@ -212,44 +221,6 @@
     </div>
     {% endif %}
 
-    <!-- Work Experience -->
-    {% if work_experiences %}
-    <div class="section">
-        <h2>{{ t.work_experience.title }}</h2>
-        {% for exp in work_experiences %}
-        <div class="entry">
-            <div class="entry-header">
-                <h3 class="entry-title">{{ exp.position_title }}</h3>
-                <div class="entry-subtitle">{{ exp.company_name }}</div>
-                <div>
-                    {% if exp.location %}<span class="entry-location">{{ exp.location }}</span> | {% endif %}
-                    <span class="entry-date">
-                        {{ exp.start_date }} - {% if exp.is_current %}{{ t.work_experience.present }}{% else %}{{ exp.end_date or t.common.na }}{% endif %}
-                    </span>
-                </div>
-            </div>
-            {% if exp.description %}
-            <div class="description">{{ exp.description|format_markdown|safe }}</div>
-            {% endif %}
-            {% if exp.achievements %}
-            <div class="description">
-                <strong>{{ t.work_experience.achievements }}:</strong>
-                {{ exp.achievements|format_markdown|safe }}
-            </div>
-            {% endif %}
-            {% if exp.star_situation or exp.star_tasks or exp.star_actions or exp.star_results %}
-            <div class="description">
-                {% if exp.star_situation %}<div><strong>{{ t.work_experience.star_situation }}:</strong> {{ exp.star_situation|format_markdown|safe }}</div>{% endif %}
-                {% if exp.star_tasks %}<div><strong>{{ t.work_experience.star_tasks }}:</strong> {{ exp.star_tasks|format_markdown|safe }}</div>{% endif %}
-                {% if exp.star_actions %}<div><strong>{{ t.work_experience.star_actions }}:</strong> {{ exp.star_actions|format_markdown|safe }}</div>{% endif %}
-                {% if exp.star_results %}<div><strong>{{ t.work_experience.star_results }}:</strong> {{ exp.star_results|format_markdown|safe }}</div>{% endif %}
-            </div>
-            {% endif %}
-        </div>
-        {% endfor %}
-    </div>
-    {% endif %}
-
     <!-- Education -->
     {% if education %}
     <div class="section">
@@ -257,13 +228,15 @@
         {% for edu in education %}
         <div class="entry">
             <div class="entry-header">
-                <h3 class="entry-title">{{ edu.degree }}{% if edu.field_of_study %} - {{ edu.field_of_study }}{% endif %}</h3>
-                <div class="entry-subtitle">{{ edu.institution_name }}</div>
-                <div>
-                    {% if edu.location %}<span class="entry-location">{{ edu.location }}</span> | {% endif %}
+                <h3 class="entry-title">
+                    {{ edu.degree }}{% if edu.field_of_study %} - {{ edu.field_of_study }}{% endif %}
                     <span class="entry-date">
                         {% if edu.start_date %}{{ edu.start_date }} - {% endif %}{{ edu.end_date or t.education.in_progress }}
                     </span>
+                </h3>
+                <div class="entry-subtitle">
+                    {{ edu.institution_name }}
+                    {% if edu.location %}<span class="entry-location">, {{ edu.location }}</span>{% endif %}
                 </div>
             </div>
             {% if edu.gpa or edu.honors %}
@@ -286,13 +259,11 @@
         <h2>{{ t.certifications.title }}</h2>
         {% for cert in certifications %}
         <div class="entry">
-            <div class="entry-header">
-                <h3 class="entry-title">{{ cert.certification_name }}</h3>
-                <div class="entry-subtitle">{{ cert.issuing_organization }}</div>
-                <div class="entry-date">
-                    {{ t.certifications.issued }}: {{ cert.issue_date }}
-                    {% if cert.expiration_date %} | {{ t.certifications.expires }}: {{ cert.expiration_date }}{% endif %}
-                </div>
+            <div class="description">
+                {{ cert.certification_name }}: {{ cert.issuing_organization }} <strong>({{ cert.issue_year }})</strong>
+                {% if cert.expiration_date %}
+                    <div class="entry-date">{{ t.certifications.expires }}: {{ cert.expiration_date }}</div>
+                {% endif %}
             </div>
             {% if cert.credential_id %}
             <div class="description"><strong>{{ t.certifications.credential_id }}:</strong> {{ cert.credential_id }}</div>
@@ -308,6 +279,50 @@
     </div>
     {% endif %}
 
+    <!-- Work Experience -->
+    {% if work_experiences %}
+    <div class="section">
+        <h2>{{ t.work_experience.title }}</h2>
+        {% for exp in work_experiences %}
+        <div class="entry experience-section">
+            <div class="entry-header">
+                <h3 class="entry-title">{{ exp.company_name }} | {{ exp.position_title }}
+                    <span class="entry-date">
+                        {{ exp.start_date }} - {% if exp.is_current %}{{ t.work_experience.present }}{% else %}{{ exp.end_date or t.common.na }}{% endif %}
+                    </span>
+                </h3>
+                <div>
+                    {% if exp.location %}<span class="entry-location">{{ exp.location }}</span> | {% endif %}
+                </div>
+            </div>
+            {% if exp.description %}
+            <div class="description">{{ exp.description|format_markdown|safe }}</div>
+            {% endif %}
+            {% if exp.achievements %}
+            <div class="description">
+                <strong>{{ t.work_experience.achievements }}:</strong>
+                {{ exp.achievements|format_markdown|safe }}
+            </div>
+            {% endif %}
+            {% if exp.star_situation or exp.star_tasks or exp.star_actions or exp.star_results %}
+            <div class="description">
+                {% if exp.star_situation %}<div><strong>{{ t.work_experience.star_situation }}:</strong> {{ exp.star_situation|format_markdown|safe }}</div>{% endif %}
+                {% if exp.star_tasks %}<div><strong>{{ t.work_experience.star_tasks }}:</strong> {{ exp.star_tasks|format_markdown|safe }}</div>{% endif %}
+                {% if exp.star_actions %}<div><strong>{{ t.work_experience.star_actions }}:</strong> {{ exp.star_actions|format_markdown|safe }}</div>{% endif %}
+                {% if exp.star_results %}<div><strong>{{ t.work_experience.star_results }}:</strong> {{ exp.star_results|format_markdown|safe }}</div>{% endif %}
+            </div>
+            {% endif %}
+            {% if exp.skills %}
+            <div class="description">
+                <strong>{{ t.skills.title }}:</strong>
+                {{ exp.skills|join(', ') }}
+            </div>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
     <!-- Skills -->
     {% if skills_by_category %}
     <div class="section">
@@ -317,7 +332,7 @@
             <div class="skill-category-title">{{ category_name }}</div>
             <div class="skill-list">
                 {% for skill in category_skills %}
-                <span class="skill-item">{{ skill.skill_name }}{% if skill.proficiency_level %} ({{ skill.proficiency_level }}){% endif %}</span>
+                <span class="skill-item">{{ skill.skill_name }}</span>
                 {% endfor %}
             </div>
         </div>
@@ -345,6 +360,12 @@
             <div class="description">
                 <strong>{{ t.projects.achievements }}:</strong>
                 {{ project.achievements|format_markdown|safe }}
+            </div>
+            {% endif %}
+            {% if project.skills %}
+            <div class="description">
+                <strong>{{ t.skills.title }}:</strong>
+                {{ project.skills|join(', ') }}
             </div>
             {% endif %}
             {% if project.project_url or project.github_url %}

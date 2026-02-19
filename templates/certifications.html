@@ -27,7 +27,7 @@
             </div>
             <div class="info-item">
                 <label>{{ t.certifications.issued }}:</label>
-                <span>{{ cert['issue_date'] or t.common.na }}</span>
+                <span>{{ cert['issue_year'] or cert['issue_date'] or t.common.na }}</span>
             </div>
             {% if cert['expiration_date'] %}
             <div class="info-item">

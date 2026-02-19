@@ -6,6 +6,7 @@ google-genai
 groq
 PyPDF2
 python-docx
+html2docx
 markdown
 python-dotenv
 pdfkit

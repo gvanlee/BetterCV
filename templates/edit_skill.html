@@ -15,39 +15,16 @@
                    value="{{ skill['skill_name'] if skill else '' }}" required>
         </div>
 
-        <div class="form-row">
-            <div class="form-group">
-                <label for="category_id">{{ t.skills.category }}</label>
-                <select id="category_id" name="category_id">
-                    <option value="">{{ t.skills.select_category }}</option>
-                    {% for cat in categories %}
-                    <option value="{{ cat['id'] }}" {% if skill and skill['category_id'] == cat['id'] %}selected{% endif %}>
-                        {{ cat['name'] }}
-                    </option>
-                    {% endfor %}
-                </select>
-            </div>
-            
-            <div class="form-group">
-                <label for="proficiency_level">{{ t.skills.proficiency_level }}</label>
-                <select id="proficiency_level" name="proficiency_level">
-                    <option value="">{{ t.skills.select_level }}</option>
-                    <option value="Beginner" {% if skill and skill['proficiency_level'] == 'Beginner' %}selected{% endif %}>{{ t.skills.beginner }}</option>
-                    <option value="Intermediate" {% if skill and skill['proficiency_level'] == 'Intermediate' %}selected{% endif %}>{{ t.skills.intermediate }}</option>
-                    <option value="Advanced" {% if skill and skill['proficiency_level'] == 'Advanced' %}selected{% endif %}>{{ t.skills.advanced }}</option>
-                    <option value="Expert" {% if skill and skill['proficiency_level'] == 'Expert' %}selected{% endif %}>{{ t.skills.expert }}</option>
-                </select>
-            </div>
-        </div>
-
-        <div class="form-row">
-            <div class="form-group">
-                <label for="display_order">{{ t.skills.display_order }}</label>
-                <input type="number" id="display_order" name="display_order" 
-                       value="{{ skill['display_order'] if skill else 0 }}" min="0">
-                <small>{{ t.skills.display_order_help }}</small>
-            </div>
-            <div class="form-group"></div>
+        <div class="form-group">
+            <label for="category_id">{{ t.skills.category }} *</label>
+            <select id="category_id" name="category_id" required>
+                <option value="">{{ t.skills.select_category }}</option>
+                {% for cat in categories %}
+                <option value="{{ cat['id'] }}" {% if skill and skill['category_id'] == cat['id'] %}selected{% endif %}>
+                    {{ cat['name'] }}
+                </option>
+                {% endfor %}
+            </select>
         </div>
     </div>
 

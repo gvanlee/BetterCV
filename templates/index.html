@@ -6,6 +6,9 @@
 <div class="hero">
     <h1>{{ t.home.welcome }}</h1>
     <p class="subtitle">{{ t.home.subtitle }}</p>
+    {% if current_consultant %}
+    <p class="consultant-info"><strong>{{ t.home.viewing_cv }}</strong> {{ current_consultant.display_name }}</p>
+    {% endif %}
 </div>
 
 <div class="card-grid">

@@ -32,7 +32,8 @@
     "consultants_title": "Consultants",
     "consultants_desc": "Consultantprofielen toevoegen, wisselen, importeren of exporteren",
     "export_cv_title": "CV Exporteren",
-    "export_cv_desc": "Download uw CV als PDF of Word-document"
+    "export_cv_desc": "Download uw CV als PDF of Word-document",
+    "viewing_cv": "CV wordt weergegeven:"
   },
   
   "buttons": {
@@ -49,6 +50,7 @@
     "add_title": "Persoonlijke Informatie Toevoegen",
     "edit_title": "Persoonlijke Informatie Bewerken",
     "basic_info": "Basisinformatie",
+    "name": "Naam",
     "first_name": "Voornaam",
     "last_name": "Achternaam",
     "email": "E-mail",
@@ -214,12 +216,13 @@
     "import_button": "JSON Importeren",
     "import_title": "Consultantgegevens Importeren",
     "import_mode": "Doel van import",
-    "import_existing": "Bestaande consultant vervangen",
+    "import_existing": "Overschrijven bestaande gegevens",
     "import_new": "Nieuwe consultant aanmaken",
     "select_consultant": "Selecteer consultant",
     "import_file": "JSON-bestand",
     "import_replace_hint": "Importeren vervangt de bestaande gegevens van de consultant.",
     "import_name_hint": "Laat leeg om de naam uit het JSON-bestand te gebruiken.",
+    "overwrite": "Overschrijven",
     "back_button": "Terug naar Beheer",
     "no_data": "Nog geen consultants toegevoegd.",
     "unnamed": "Naamloze Consultant"

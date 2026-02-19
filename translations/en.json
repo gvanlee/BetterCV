@@ -32,7 +32,8 @@
     "consultants_title": "Consultants",
     "consultants_desc": "Add, switch, import, or export consultant profiles",
     "export_cv_title": "Export CV",
-    "export_cv_desc": "Download your CV as PDF or Word document"
+    "export_cv_desc": "Download your CV as PDF or Word document",
+    "viewing_cv": "Viewing CV:"
   },
   
   "buttons": {
@@ -49,6 +50,7 @@
     "add_title": "Add Personal Information",
     "edit_title": "Edit Personal Information",
     "basic_info": "Basic Information",
+    "name": "Full Name",
     "first_name": "First Name",
     "last_name": "Last Name",
     "email": "Email",
@@ -214,12 +216,13 @@
     "import_button": "Import JSON",
     "import_title": "Import Consultant Data",
     "import_mode": "Import Target",
-    "import_existing": "Replace an existing consultant",
+    "import_existing": "Replace consultant data",
     "import_new": "Create a new consultant",
     "select_consultant": "Select consultant",
     "import_file": "JSON file",
     "import_replace_hint": "Importing will replace the consultant's existing data.",
     "import_name_hint": "Leave blank to use the name from the JSON file.",
+    "overwrite": "Overwrite",
     "back_button": "Back to Admin",
     "no_data": "No consultants added yet.",
     "unnamed": "Unnamed Consultant"

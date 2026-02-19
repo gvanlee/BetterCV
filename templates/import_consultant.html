@@ -5,7 +5,6 @@
 {% block content %}
 <div class="page-header">
     <h2>{{ t.consultants.import_title }}</h2>
-    <a href="{{ url_for('admin_dashboard') }}" class="btn btn-secondary">{{ t.consultants.back_button }}</a>
 </div>
 
 <form method="POST" enctype="multipart/form-data" class="form">
@@ -71,6 +70,18 @@
 </form>
 
 <script>
+    function updateOverwriteInfo() {
+        var consultantSelect = document.getElementById('consultant_id');
+        var overwriteInfo = document.getElementById('overwriteInfo');
+        if (consultantSelect && overwriteInfo) {
+            var selectedOption = consultantSelect.options[consultantSelect.selectedIndex];
+            if (selectedOption) {
+                var consultantName = selectedOption.textContent.trim();
+                overwriteInfo.textContent = '{{ t.consultants.overwrite }}: ' + consultantName;
+            }
+        }
+    }
+
     function toggleImportMode() {
         var existingGroup = document.getElementById('existingConsultantGroup');
         var newGroup = document.getElementById('newConsultantGroup');
@@ -81,6 +92,7 @@
         if (selected.value === 'existing') {
             existingGroup.style.display = 'block';
             newGroup.style.display = 'none';
+            updateOverwriteInfo();
         } else {
             existingGroup.style.display = 'none';
             newGroup.style.display = 'block';
@@ -91,6 +103,12 @@
     radios.forEach(function (radio) {
         radio.addEventListener('change', toggleImportMode);
     });
+    
+    var consultantSelect = document.getElementById('consultant_id');
+    if (consultantSelect) {
+        consultantSelect.addEventListener('change', updateOverwriteInfo);
+    }
+    
     toggleImportMode();
 </script>
 {% endblock %}

@@ -25,11 +25,6 @@
         <div class="skill-item">
             <div class="skill-info">
                 <h4>{{ skill['skill_name'] }}</h4>
-                <div class="skill-details">
-                    {% if skill['proficiency_level'] %}
-                        <span class="badge">{{ skill['proficiency_level'] }}</span>
-                    {% endif %}
-                </div>
             </div>
             <div class="skill-actions">
                 <a href="{{ url_for('edit_skill', id=skill['id']) }}" class="btn btn-small">{{ t.buttons.edit }}</a>

@@ -200,6 +200,18 @@ body {
     color: var(--text-secondary);
 }
 
+.consultant-info {
+    font-size: 1.1rem;
+    color: var(--primary-color);
+    margin-top: 1rem;
+    font-weight: 500;
+}
+
+.consultant-info strong {
+    color: var(--primary-color);
+    font-weight: 600;
+}
+
 /* ===== Cards ===== */
 .card-grid {
     width: 100%;
