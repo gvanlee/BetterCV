@@ -50,6 +50,7 @@ The application includes OAuth 2.0 authentication with role-based access control
 
 ### Features
 - **OAuth 2.0 Integration**: Login with Google or Microsoft accounts
+- **Passwordless Email Login**: Send one-time sign-in links to existing users
 - **Whitelist-based Access**: Only pre-approved emails can access the system
 - **Role-based Authorization**: 
   - **Admin**: Full access to all features, user management, and whitelist control
@@ -103,7 +104,26 @@ The application includes OAuth 2.0 authentication with role-based access control
    MICROSOFT_CLIENT_SECRET=your-client-secret-here
    ```
 
-4. **Generate Secret Key**
+   If a provider client ID is not configured, that provider button is hidden from the login screen.
+
+4. **Configure Email Magic-Link Login** (Optional)
+
+   Add SMTP settings to `.env`:
+   ```bash
+   SMTP_HOST=smtp.yourprovider.com
+   SMTP_PORT=587
+   SMTP_USERNAME=your-smtp-username
+   SMTP_PASSWORD=your-smtp-password
+   SMTP_USE_TLS=true
+   SMTP_USE_SSL=false
+   SMTP_FROM_EMAIL=no-reply@yourdomain.com
+   SMTP_FROM_NAME=BetterCV
+   EMAIL_LOGIN_TOKEN_TTL_MINUTES=30
+   ```
+
+   Users can request a one-time login link by email. The login session remains active for 24 hours (or until logout).
+
+5. **Generate Secret Key**
    
    Generate a secure random secret key:
    ```bash
@@ -115,7 +135,7 @@ The application includes OAuth 2.0 authentication with role-based access control
    SECRET_KEY=your-generated-secret-key-here
    ```
 
-5. **Set Base URL**
+6. **Set Base URL**
    
    For production deployment, set your domain:
    ```bash

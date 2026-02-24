@@ -88,7 +88,12 @@
                             </form>
                         </td>
                         <td><span class="provider-badge">{{ user['oauth_provider'] or 'N/A' }}</span></td>
-                        <td>{{ user['consultant_name'] or '-' }}</td>
+                        <td>
+                            {{ user['consultant_name'] or '-' }}
+                            {% if user['role'] == 'consultant' and not user['consultant_id'] %}
+                                <span class="status-badge status-warning">{{ t.auth.consultant_unlinked }}</span>
+                            {% endif %}
+                        </td>
                         <td>{{ user['last_login'][:10] if user['last_login'] else 'Never' }}</td>
                         <td>
                             {% if user['is_active'] %}
@@ -283,6 +288,12 @@
 .status-inactive {
     background: #fee2e2;
     color: #991b1b;
+}
+
+.status-warning {
+    margin-left: 0.5rem;
+    background: var(--primary-hover);
+    color: var(--button-primary);
 }
 
 .role-select {

@@ -1,19 +1,24 @@
 from flask import Flask, render_template, request, redirect, url_for, flash, session, Response
 from flask_login import LoginManager, login_user, logout_user, login_required, current_user
 from database import get_db_connection, init_database, get_skill_categories
-from datetime import datetime
+from datetime import datetime, timedelta
 from authlib.integrations.flask_client import OAuth
 from dotenv import load_dotenv
 import json
 import os
 import uuid
 import sqlite3
+import hashlib
+import secrets
+import smtplib
+from email.message import EmailMessage
 from google import genai
 from groq import Groq
 import PyPDF2
 import docx
 import io
 import tempfile
+from ai_prompts import get_cv_parse_prompt, get_assignment_match_prompt
 
 # Import authentication modules
 from auth import User, get_all_users, get_all_whitelist, add_to_whitelist, remove_from_whitelist, update_user_role, deactivate_user, get_all_consultants
@@ -24,6 +29,7 @@ load_dotenv()
 
 app = Flask(__name__)
 app.secret_key = os.getenv('SECRET_KEY', 'h9sdf696f34rhfvvhkxjvodfyg8yer89g7ye-8yhoiuver8v8erf98yyh34f')
+app.permanent_session_lifetime = timedelta(hours=24)
 
 # Initialize Flask-Login
 login_manager = LoginManager()
@@ -34,6 +40,187 @@ login_manager.login_message_category = 'error'
 
 # Initialize OAuth
 oauth = OAuth(app)
+
+
+def env_flag(name, default=False):
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {'1', 'true', 'yes', 'on'}
+
+
+GOOGLE_OAUTH_ENABLED = bool(os.getenv('GOOGLE_CLIENT_ID', '').strip())
+MICROSOFT_OAUTH_ENABLED = bool(os.getenv('MICROSOFT_CLIENT_ID', '').strip())
+SMTP_HOST = os.getenv('SMTP_HOST', '').strip()
+SMTP_PORT = int(os.getenv('SMTP_PORT', '587'))
+SMTP_USERNAME = os.getenv('SMTP_USERNAME', '').strip()
+SMTP_PASSWORD = os.getenv('SMTP_PASSWORD', '')
+SMTP_USE_TLS = env_flag('SMTP_USE_TLS', True)
+SMTP_USE_SSL = env_flag('SMTP_USE_SSL', False)
+SMTP_FROM_EMAIL = os.getenv('SMTP_FROM_EMAIL', '').strip()
+SMTP_FROM_NAME = os.getenv('SMTP_FROM_NAME', 'BetterCV').strip()
+EMAIL_LOGIN_TOKEN_TTL_MINUTES = int(os.getenv('EMAIL_LOGIN_TOKEN_TTL_MINUTES', '30'))
+
+
+def email_login_enabled():
+    return bool(SMTP_HOST and SMTP_FROM_EMAIL)
+
+
+def complete_login(user):
+    login_user(user)
+    session.permanent = True
+
+    if user.consultant_id:
+        session['consultant_id'] = user.consultant_id
+    else:
+        session.pop('consultant_id', None)
+
+
+def create_email_login_token(user_id):
+    conn = get_db_connection()
+    now = datetime.utcnow()
+    expires_at = now + timedelta(minutes=EMAIL_LOGIN_TOKEN_TTL_MINUTES)
+
+    conn.execute(
+        'DELETE FROM email_login_tokens WHERE used_at IS NOT NULL OR expires_at < ?',
+        (now.isoformat(),)
+    )
+
+    raw_token = secrets.token_urlsafe(32)
+    token_hash = hashlib.sha256(raw_token.encode('utf-8')).hexdigest()
+
+    conn.execute(
+        '''
+            INSERT INTO email_login_tokens (user_id, token_hash, expires_at)
+            VALUES (?, ?, ?)
+        ''',
+        (user_id, token_hash, expires_at.isoformat())
+    )
+    conn.commit()
+    conn.close()
+
+    return raw_token
+
+
+def consume_email_login_token(raw_token):
+    if not raw_token:
+        return None
+
+    token_hash = hashlib.sha256(raw_token.encode('utf-8')).hexdigest()
+    conn = get_db_connection()
+    token_row = conn.execute(
+        '''
+            SELECT id, user_id, expires_at, used_at
+            FROM email_login_tokens
+            WHERE token_hash = ?
+        ''',
+        (token_hash,)
+    ).fetchone()
+
+    if not token_row or token_row['used_at']:
+        conn.close()
+        return None
+
+    expires_at = datetime.fromisoformat(token_row['expires_at'])
+    if expires_at < datetime.utcnow():
+        conn.close()
+        return None
+
+    cursor = conn.execute(
+        'UPDATE email_login_tokens SET used_at = ? WHERE id = ? AND used_at IS NULL',
+        (datetime.utcnow().isoformat(), token_row['id'])
+    )
+    conn.commit()
+    conn.close()
+
+    if cursor.rowcount != 1:
+        return None
+
+    return token_row['user_id']
+
+
+def send_magic_link_email(recipient_email, login_link):
+    import logging
+    logger = logging.getLogger(__name__)
+    logging.basicConfig(filename='bettercv.log', encoding='utf-8', level=logging.DEBUG)
+
+    logger.debug(f"[EMAIL] send_magic_link_email called for: {recipient_email}")
+    logger.debug(f"[EMAIL] email_login_enabled: {email_login_enabled()}")
+    logger.debug(f"[EMAIL] SMTP_HOST: {SMTP_HOST}")
+    logger.debug(f"[EMAIL] SMTP_PORT: {SMTP_PORT}")
+    logger.debug(f"[EMAIL] SMTP_FROM_EMAIL: {SMTP_FROM_EMAIL}")
+    logger.debug(f"[EMAIL] SMTP_USE_TLS: {SMTP_USE_TLS}")
+    logger.debug(f"[EMAIL] SMTP_USE_SSL: {SMTP_USE_SSL}")
+    logger.debug(f"[EMAIL] SMTP_USERNAME set: {bool(SMTP_USERNAME)}")
+    logger.debug(f"[EMAIL] SMTP_PASSWORD set: {bool(SMTP_PASSWORD)}")
+
+    if not email_login_enabled():
+        logger.error("[EMAIL] Email login not enabled - SMTP_HOST or SMTP_FROM_EMAIL missing")
+        return False
+
+    message = EmailMessage()
+    message['Subject'] = 'Your BetterCV sign-in link'
+    message['From'] = f'{SMTP_FROM_NAME} <{SMTP_FROM_EMAIL}>' if SMTP_FROM_NAME else SMTP_FROM_EMAIL
+    message['To'] = recipient_email
+    message.set_content(
+        f"Use this one-time link to sign in to BetterCV:\n\n{login_link}\n\n"
+        f"This link expires in {EMAIL_LOGIN_TOKEN_TTL_MINUTES} minutes and can only be used once."
+    )
+    logger.debug(f"[EMAIL] Email message created - From: {message['From']}, To: {message['To']}")
+
+    try:
+        logger.debug(f"[EMAIL] Attempting SMTP connection: host={SMTP_HOST}, port={SMTP_PORT}, ssl={SMTP_USE_SSL}, tls={SMTP_USE_TLS}")
+
+        if SMTP_USE_SSL:
+            logger.debug("[EMAIL] Using SMTP_SSL connection")
+            with smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT, timeout=20) as smtp:
+                logger.debug("[EMAIL] SMTP_SSL connection established")
+                if SMTP_USERNAME:
+                    logger.debug(f"[EMAIL] Authenticating as: {SMTP_USERNAME}")
+                    smtp.login(SMTP_USERNAME, SMTP_PASSWORD)
+                    logger.debug("[EMAIL] Authentication successful")
+                else:
+                    logger.debug("[EMAIL] No authentication required (no username)")
+                logger.debug("[EMAIL] Sending message...")
+                smtp.send_message(message)
+                logger.info(f"[EMAIL] Message sent successfully to {recipient_email}")
+        else:
+            logger.debug("[EMAIL] Using standard SMTP connection")
+            with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=20) as smtp:
+                logger.debug("[EMAIL] SMTP connection established")
+                if SMTP_USE_TLS:
+                    logger.debug("[EMAIL] Starting TLS...")
+                    smtp.starttls()
+                    logger.debug("[EMAIL] TLS started")
+                else:
+                    logger.debug("[EMAIL] TLS not enabled")
+
+                if SMTP_USERNAME:
+                    logger.debug(f"[EMAIL] Authenticating as: {SMTP_USERNAME}")
+                    smtp.login(SMTP_USERNAME, SMTP_PASSWORD)
+                    logger.debug("[EMAIL] Authentication successful")
+                else:
+                    logger.debug("[EMAIL] No authentication required (no username)")
+
+                logger.debug("[EMAIL] Sending message...")
+                smtp.send_message(message)
+                logger.info(f"[EMAIL] Message sent successfully to {recipient_email}")
+
+        return True
+    except smtplib.SMTPAuthenticationError as auth_err:
+        logger.error(f"[EMAIL] SMTP Authentication failed: {str(auth_err)}")
+        return False
+    except smtplib.SMTPException as smtp_err:
+        logger.error(f"[EMAIL] SMTP error: {str(smtp_err)}")
+        return False
+    except OSError as os_err:
+        logger.error(f"[EMAIL] Connection error (network/DNS): {str(os_err)}")
+        return False
+    except Exception as e:
+        logger.error(f"[EMAIL] Unexpected error sending magic-link email: {str(e)}")
+        import traceback
+        logger.error(f"[EMAIL] Traceback: {traceback.format_exc()}")
+        return False
 
 # Configure Google OAuth
 google = oauth.register(
@@ -49,11 +236,11 @@ microsoft = oauth.register(
     name='microsoft',
     client_id=os.getenv('MICROSOFT_CLIENT_ID'),
     client_secret=os.getenv('MICROSOFT_CLIENT_SECRET'),
-    # authorize_url='https://login.microsoftonline.com/common/oauth2/v2.0/authorize',
-    authorize_url='https://login.microsoftonline.com/organizations/oauth2/v2.0/authorize',
+    # authorize_url='https://login.microsoftonline.com/organizations/oauth2/v2.0/authorize',
+    authorize_url='https://login.microsoftonline.com/39e6a0f2-2da0-42b2-8a33-476485f72038/oauth2/v2.0/authorize',
     authorize_params=None,
-    # access_token_url='https://login.microsoftonline.com/common/oauth2/v2.0/token',
-    access_token_url='https://login.microsoftonline.com/organizations/oauth2/v2.0/token',
+    # access_token_url='https://login.microsoftonline.com/organizations/oauth2/v2.0/token',
+    access_token_url='https://login.microsoftonline.com/39e6a0f2-2da0-42b2-8a33-476485f72038/oauth2/v2.0/token',
     access_token_params=None,
     refresh_token_url=None,
     client_kwargs={
@@ -61,7 +248,6 @@ microsoft = oauth.register(
          'validate_iss': False
     },
     jwks_uri="https://login.microsoftonline.com/common/discovery/v2.0/keys"    
-    # server_metadata_url='https://login.microsoftonline.com/common/v2.0/.well-known/openid-configuration'
 )
 
 @login_manager.user_loader
@@ -200,7 +386,12 @@ def login():
     """Login page"""
     if current_user.is_authenticated:
         return redirect(url_for('index'))
-    return render_template('login.html')
+    return render_template(
+        'login.html',
+        show_google_login=GOOGLE_OAUTH_ENABLED,
+        show_microsoft_login=MICROSOFT_OAUTH_ENABLED,
+        show_email_login=email_login_enabled()
+    )
 
 
 @app.route('/logout')
@@ -215,6 +406,10 @@ def logout():
 @app.route('/auth/google')
 def auth_google():
     """Initiate Google OAuth"""
+    if not GOOGLE_OAUTH_ENABLED:
+        flash(get_translation('messages.oauth_not_configured'), 'error')
+        return redirect(url_for('login'))
+
     # redirect_uri = url_for('auth_google_callback', _external=True)
     redirect_uri = (os.getenv('BASE_URL') + os.getenv('GOOGLE_OAUTH_REDIRECT_URI')) or url_for('auth_google_callback', _external=True)
 
@@ -250,12 +445,8 @@ def auth_google_callback():
         User.update_last_login(user.id)
         
         # Log in user
-        login_user(user)
+        complete_login(user)
         flash(get_translation('messages.login_success'), 'success')
-        
-        # Set consultant_id in session for consultants
-        if user.consultant_id:
-            session['consultant_id'] = user.consultant_id
         
         return redirect(url_for('index'))
         
@@ -268,6 +459,10 @@ def auth_google_callback():
 @app.route('/auth/microsoft')
 def auth_microsoft():
     """Initiate Microsoft OAuth"""
+    if not MICROSOFT_OAUTH_ENABLED:
+        flash(get_translation('messages.oauth_not_configured'), 'error')
+        return redirect(url_for('login'))
+
     # redirect_uri = url_for('auth_microsoft_callback', _external=True)
     redirect_uri = (os.getenv('BASE_URL') + os.getenv('MICROSOFT_OAUTH_REDIRECT_URI')) or url_for('auth_microsoft_callback', _external=True)
     print(f"Initiating Microsoft OAuth, redirect_uri: {redirect_uri}")
@@ -307,12 +502,8 @@ def auth_microsoft_callback():
         User.update_last_login(user.id)
         
         # Log in user
-        login_user(user)
+        complete_login(user)
         flash(get_translation('messages.login_success'), 'success')
-        
-        # Set consultant_id in session for consultants
-        if user.consultant_id:
-            session['consultant_id'] = user.consultant_id
         
         return redirect(url_for('index'))
         
@@ -320,6 +511,121 @@ def auth_microsoft_callback():
         print(f"OAuth error: {str(e)}")
         flash(get_translation('messages.oauth_error'), 'error')
         return redirect(url_for('login'))
+
+
+@app.route('/auth/email/request', methods=['POST'])
+def auth_email_request():
+    """Send one-time login link to existing user by e-mail."""
+    import logging
+    logger = logging.getLogger(__name__)
+    logging.basicConfig(filename='bettercv.log', encoding='utf-8', level=logging.DEBUG)
+
+    logger.debug("[AUTH_EMAIL] auth_email_request called")
+
+    if not email_login_enabled():
+        logger.error("[AUTH_EMAIL] Email login not enabled")
+        flash(get_translation('messages.email_login_not_configured'), 'error')
+        return redirect(url_for('login'))
+
+    email = (request.form.get('email') or '').strip().lower()
+    logger.debug(f"[AUTH_EMAIL] Email requested: {email}")
+
+    if not email:
+        logger.warning("[AUTH_EMAIL] No email provided")
+        flash(get_translation('messages.email_required'), 'error')
+        return redirect(url_for('login'))
+
+    user = User.get_by_email(email)
+    logger.debug(f"[AUTH_EMAIL] User lookup result: {bool(user)}")
+
+    if not user:
+        logger.debug(f"[AUTH_EMAIL] No user found for {email}, checking whitelist...")
+        whitelist_entry = User.is_whitelisted(email)
+        
+        if not whitelist_entry:
+            domain = User._get_email_domain(email)
+            auto_domains = User._get_auto_whitelist_domains()
+            if domain and domain in auto_domains:
+                logger.info(f"[AUTH_EMAIL] Domain {domain} is auto-whitelisted, adding to whitelist")
+                from auth import add_to_whitelist
+                add_to_whitelist(email, 'consultant', notes='Auto-whitelisted by domain (email login)')
+                whitelist_entry = User.is_whitelisted(email)
+            else:
+                logger.debug(f"[AUTH_EMAIL] Email {email} and domain not whitelisted")
+        
+        if whitelist_entry:
+            logger.info(f"[AUTH_EMAIL] Email {email} is whitelisted, creating user")
+            user = User.create_user(email, None, 'email', None)
+            if user:
+                logger.info(f"[AUTH_EMAIL] User created for {email}, user_id={user.id}")
+            else:
+                logger.error(f"[AUTH_EMAIL] Failed to create user for {email}")
+        else:
+            logger.debug(f"[AUTH_EMAIL] Email {email} not whitelisted (security: not exposing this to user)")
+
+    if user:
+        logger.info(f"[AUTH_EMAIL] User ready for {email}, user_id={user.id}")
+        token = create_email_login_token(user.id)
+        logger.debug(f"[AUTH_EMAIL] Token created (hash only, not logged)")
+
+        login_link = url_for('auth_email_verify', token=token, _external=True)
+        logger.debug(f"[AUTH_EMAIL] Login link generated")
+
+        sent = send_magic_link_email(email, login_link)
+        logger.info(f"[AUTH_EMAIL] Email send result: {sent}")
+
+        if not sent:
+            logger.error(f"[AUTH_EMAIL] Failed to send email to {email}")
+            flash(get_translation('messages.email_login_send_failed'), 'error')
+            return redirect(url_for('login'))
+        else:
+            logger.info(f"[AUTH_EMAIL] Email successfully sent to {email}")
+    else:
+        logger.debug(f"[AUTH_EMAIL] User not eligible or not found for {email}")
+
+    flash(get_translation('messages.email_login_link_sent'), 'success')
+    logger.debug("[AUTH_EMAIL] Generic success message shown to user")
+    return redirect(url_for('login'))
+
+
+@app.route('/auth/email/verify')
+def auth_email_verify():
+    """Validate one-time login token and sign in user."""
+    import logging
+    logger = logging.getLogger(__name__)
+
+    logger.debug("[AUTH_EMAIL_VERIFY] auth_email_verify called")
+
+    token = (request.args.get('token') or '').strip()
+    logger.debug(f"[AUTH_EMAIL_VERIFY] Token present: {bool(token)}")
+
+    if not token:
+        logger.warning("[AUTH_EMAIL_VERIFY] No token provided")
+        flash(get_translation('messages.email_login_invalid_token'), 'error')
+        return redirect(url_for('login'))
+
+    user_id = consume_email_login_token(token)
+    logger.debug(f"[AUTH_EMAIL_VERIFY] Token validation result: {bool(user_id)}")
+
+    if not user_id:
+        logger.warning("[AUTH_EMAIL_VERIFY] Invalid or expired token")
+        flash(get_translation('messages.email_login_invalid_token'), 'error')
+        return redirect(url_for('login'))
+
+    user = User.get_by_id(user_id)
+    logger.debug(f"[AUTH_EMAIL_VERIFY] User lookup result: {bool(user)}")
+
+    if not user:
+        logger.error(f"[AUTH_EMAIL_VERIFY] User not found for valid token user_id={user_id}")
+        flash(get_translation('messages.email_login_invalid_token'), 'error')
+        return redirect(url_for('login'))
+
+    logger.info(f"[AUTH_EMAIL_VERIFY] Valid token for user: {user.email}")
+    User.update_last_login(user.id)
+    complete_login(user)
+    flash(get_translation('messages.login_success'), 'success')
+    logger.info(f"[AUTH_EMAIL_VERIFY] User {user.email} logged in successfully via email link")
+    return redirect(url_for('index'))
 
 
 # ==================== Admin Routes ====================
@@ -455,12 +761,34 @@ def admin_deactivate_user(user_id):
 
 def get_consultants(conn):
     """Retrieve all consultants ordered by display name."""
+    if current_user.is_authenticated and not current_user.is_admin():
+        if not current_user.consultant_id:
+            return []
+        return conn.execute(
+            'SELECT id, display_name FROM consultants WHERE id = ? ORDER BY display_name, id',
+            (current_user.consultant_id,)
+        ).fetchall()
+
     return conn.execute(
         'SELECT id, display_name FROM consultants ORDER BY display_name, id'
     ).fetchall()
 
 
 def resolve_current_consultant_id(conn):
+    if current_user.is_authenticated and not current_user.is_admin():
+        if not current_user.consultant_id:
+            return None
+
+        own_consultant = conn.execute(
+            'SELECT id FROM consultants WHERE id = ?',
+            (current_user.consultant_id,)
+        ).fetchone()
+        if not own_consultant:
+            return None
+
+        session['consultant_id'] = current_user.consultant_id
+        return current_user.consultant_id
+
     consultant_id = session.get('consultant_id')
     if consultant_id:
         existing = conn.execute(
@@ -491,6 +819,7 @@ def ensure_consultant_selected():
         'import_consultant',
         'export_consultant',
         'parse_cv',
+        'assignment_match',
         'review_parsed_cv',
         'import_parsed_cv',
         'export_cv',
@@ -512,6 +841,10 @@ def ensure_consultant_selected():
         if current_user.consultant_id:
             session['consultant_id'] = current_user.consultant_id
             return None
+        flash(get_translation('messages.user_no_consultant_access'), 'error')
+        logout_user()
+        session.pop('consultant_id', None)
+        return redirect(url_for('login'))
 
     conn = get_db_connection()
     consultant_id = resolve_current_consultant_id(conn)
@@ -632,124 +965,6 @@ def extract_text_from_file(file):
         return "Unsupported file type. Please upload PDF, DOCX, or TXT files."
 
 
-def get_cv_parse_prompt(cv_text):
-    """Generate the prompt for CV parsing."""
-    return f"""
-Analyze the following CV/resume text and extract structured information 
-  in JSON format.
-Keep in mind that the CV may have varying formats and may not explicitly 
-  label sections, so you need to infer the structure based on the content.
-Also, the CV may be in either Dutch or English, so be prepared to handle 
-  both languages. Focus on extracting accurate information based on what 
-  is explicitly mentioned in the CV, and do not make assumptions beyond 
-  the provided text.
-Dates may be provided in full or partially (e.g. "Okt 2023" or "Oct 2024").
-
-The JSON should match this exact schema:
-
-{{
-  "consultant": {{
-    "display_name": "Full Name from CV"
-  }},
-  "personal_info": {{
-    "first_name": "First Name",
-    "last_name": "Last Name", 
-    "email": "email@example.com",
-    "phone": "Phone Number",
-    "address": "Full Address (street and number)",
-    "zip_code": "Postal Code or Zip Code",
-    "city": "City",
-    "country": "Country",
-    "summary": "Professional summary or objective"
-  }},
-  "work_experience": [
-    {{
-      "job_title": "Job Title",
-      "company_name": "Company Name",
-      "location": "City, Country",
-      "start_date": "YYYY-MM-DD",
-      "end_date": "YYYY-MM-DD or null for current",
-      "star_situation": "The context and situation of the role/project",
-      "star_tasks": "The specific tasks and responsibilities",
-      "star_actions": "The specific actions taken to solve problems or deliver results",
-      "star_results": "The quantifiable results and achievements",
-      "description": "Any remaining details not captured in STAR"
-    }}
-  ],
-  "education": [
-    {{
-      "degree": "Degree Type",
-      "field_of_study": "Field of Study",
-      "institution": "Institution Name",
-      "location": "City, Country",
-      "start_date": "YYYY-MM-DD",
-      "end_date": "YYYY-MM-DD",
-      "description": "Additional details"
-    }}
-  ],
-  "skills": [
-    {{
-      "category": "Category (one of: 'Data Analytics', 'Data Engineering', 'Data Management', 'Data Modeling', 'Databases', 'Database Administration', 'Languages', 'Operating Systems', 'Programming Languages', 'Tools' or 'Various'), attempt to map as close as possible",
-      "name": "Skill Name",
-      "proficiency": "Proficiency Level",
-      "description": "Optional description"
-    }}
-  ],
-  "projects": [
-    {{
-      "name": "Project Name",
-      "description": "Project description",
-      "start_date": "YYYY-MM-DD",
-      "end_date": "YYYY-MM-DD or null",
-      "url": "Project URL if mentioned"
-    }}
-  ],
-  "certifications": [
-    {{
-      "name": "Certification Name/Course Name or name of issuing organization if specific certification name is not mentioned",
-      "issuing_organization": "Issuing Organization",
-      "issue_date": "YYYY-MM-DD",
-      "expiry_date": "YYYY-MM-DD or null",
-      "credential_id": "Credential ID if mentioned",
-      "description": "Description"
-    }}
-  ]
-}}
-
-Rules:
-- Keep the end result in Dutch if the source is in Dutch, 
-    Translate English CVs into Dutch. Do not translate English
-    verbs if they are used in a Dutch CV. Especially, do not try
-    to translate certificates, educational degrees, project names, company names, 
-    skill names, etc. that are in English in the original CV, keep those in English 
-    in the output
-- Experience: if you find a list of points under results for experience, make
-    sure to capture those in the STAR results field, and if there are remaining 
-    details that are not captured in the STAR format, put those in the description 
-    field for that experience entry.
-- Certifications: if a location for the organization is mentioned, 
-    add that to the organization field. Make sure to extract the name of the 
-    certification or course if mentioned.
-- If bullet points are used in the CV, use markdown formatting in 
-    the JSON output to preserve the bullet points in the description fields.
-    If you encounter bullet points that are 
-- Dates are normally formatted as European dates, so DD-MM-YYYY,
-  if abbreviated they are usually in the format "Okt 2023" or "Oct 2023", 
-  in this case, "Oct 2023" should be interpreted as "2023-10-01" 
-  (use the first day of the month when day is not specified).
-- Format dates as YYYY-MM-DD or YYYY-MM-01 if day is unknown, or YYYY-01-01 if only year
-- Extract only information that is explicitly mentioned in the CV
-- For skills, group similar skills into logical categories, match them to the categories
-    we have in the database as closely as possible, but if you are not sure about the 
-    category, use "Various".
-- Return only valid JSON, no additional text or explanations
-- If information is missing, use an empty string or omit the field, do not use "None" or Null
-
-CV Text:
-{cv_text}
-"""
-
-
 def parse_cv_with_ai(cv_text, provider='gemini'):
     """Parse CV text using chosen AI provider and return structured data."""
     prompt = get_cv_parse_prompt(cv_text)
@@ -801,6 +1016,133 @@ def parse_cv_with_ai(cv_text, provider='gemini'):
         return parsed_data, None
     except json.JSONDecodeError as e:
         return None, f"Failed to parse AI response as JSON: {str(e)}\nResponse: {json_text[:200]}..."
+
+
+def match_assignment_with_ai(assignment_description, consultant_payloads, provider='gemini'):
+    """Match assignment text against selected consultant profiles using AI."""
+    consultants_json = json.dumps(consultant_payloads, indent=2, ensure_ascii=False)
+    prompt = get_assignment_match_prompt(assignment_description, consultants_json)
+
+    if provider == 'gemini':
+        if not GEMINI_API_KEY or genai_client is None:
+            return None, consultants_json, "Gemini API key not configured."
+
+        try:
+            response = genai_client.models.generate_content(
+                model='gemini-flash-latest',
+                contents=prompt
+            )
+            if not response.text:
+                return None, consultants_json, "No response from Gemini AI"
+            return response.text, consultants_json, None
+        except Exception as e:
+            return None, consultants_json, f"Gemini error: {str(e)}"
+
+    if provider == 'groq':
+        if not GROQ_API_KEY or groq_client is None:
+            return None, consultants_json, "Groq API key not configured."
+
+        try:
+            response = groq_client.chat.completions.create(
+                model='llama-3.3-70b-versatile',
+                messages=[
+                    {"role": "system", "content": "You are a recruitment matching assistant."},
+                    {"role": "user", "content": prompt}
+                ]
+            )
+            return response.choices[0].message.content, consultants_json, None
+        except Exception as e:
+            return None, consultants_json, f"Groq error: {str(e)}"
+
+    return None, consultants_json, f"Unknown AI provider: {provider}"
+
+
+def build_consultant_ai_payload(conn, consultant_id):
+    """Build normalized consultant payload for export/matching AI input."""
+    consultant = conn.execute(
+        'SELECT id, display_name FROM consultants WHERE id = ?',
+        (consultant_id,)
+    ).fetchone()
+
+    if not consultant:
+        return None
+
+    payload = {
+        'consultant': {
+            'id': consultant['id'],
+            'display_name': consultant['display_name']
+        },
+        'personal_info': None,
+        'work_experience': [],
+        'education': [],
+        'skills': [],
+        'projects': [],
+        'certifications': []
+    }
+
+    personal_info = conn.execute(
+        'SELECT * FROM personal_info WHERE consultant_id = ? ORDER BY id DESC LIMIT 1',
+        (consultant_id,)
+    ).fetchone()
+    if personal_info:
+        payload['personal_info'] = dict(personal_info)
+        payload['personal_info'].pop('id', None)
+        payload['personal_info'].pop('consultant_id', None)
+        payload['personal_info'].pop('created_at', None)
+        payload['personal_info'].pop('updated_at', None)
+
+    for table, key in [
+        ('work_experience', 'work_experience'),
+        ('education', 'education'),
+        ('skills', 'skills'),
+        ('projects', 'projects'),
+        ('certifications', 'certifications')
+    ]:
+        rows = conn.execute(
+            f'SELECT * FROM {table} WHERE consultant_id = ? ORDER BY id',
+            (consultant_id,)
+        ).fetchall()
+        payload[key] = []
+        for row in rows:
+            row_data = dict(row)
+
+            if table == 'skills' and row_data.get('category_id'):
+                cat = conn.execute('SELECT name FROM skill_categories WHERE id = ?', (row_data['category_id'],)).fetchone()
+                if cat:
+                    row_data['category_name'] = cat['name']
+
+            if table == 'work_experience':
+                skills = conn.execute('''
+                    SELECT s.skill_name
+                    FROM skills s
+                    JOIN experience_skills es ON s.id = es.skill_id
+                    WHERE es.experience_id = ?
+                ''', (row['id'],)).fetchall()
+                row_data['skills'] = [s['skill_name'] for s in skills]
+
+            if table == 'projects':
+                skills = conn.execute('''
+                    SELECT s.skill_name
+                    FROM skills s
+                    JOIN project_skills ps ON s.id = ps.skill_id
+                    WHERE ps.project_id = ?
+                ''', (row['id'],)).fetchall()
+                row_data['skills'] = [s['skill_name'] for s in skills]
+
+            if table == 'certifications' and row_data.get('issue_date'):
+                issue_date_str = str(row_data['issue_date'])
+                if issue_date_str and len(issue_date_str) >= 4:
+                    row_data['issue_year'] = issue_date_str[:4]
+
+            row_data.pop('id', None)
+            row_data.pop('consultant_id', None)
+            row_data.pop('created_at', None)
+            row_data.pop('updated_at', None)
+            row_data.pop('category', None)
+            row_data.pop('years_of_experience', None)
+            payload[key].append(row_data)
+
+    return payload
 
 
 def parse_cv_with_gemini(cv_text):
@@ -1322,6 +1664,145 @@ def import_parsed_cv():
     return redirect(url_for('import_consultant'))
 
 
+@app.route('/assignment-match', methods=['GET', 'POST'])
+@login_required
+def assignment_match():
+    """Match an assignment to one or more consultants using AI."""
+    conn = get_db_connection()
+
+    all_consultants = []
+    selected_consultant_ids = []
+    selected_consultant_names = []
+    assignment_description = ''
+    ai_provider = 'gemini'
+    match_result = None
+    match_summary = None
+    match_ranking = []
+    recommended_names = []
+    match_notes = []
+    match_result_parse_error = False
+    consultants_json_input = None
+
+    if current_user.is_admin():
+        all_consultants = conn.execute(
+            'SELECT id, display_name FROM consultants ORDER BY display_name, id'
+        ).fetchall()
+    else:
+        if current_user.consultant_id:
+            selected_consultant_ids = [current_user.consultant_id]
+            own_consultant = conn.execute(
+                'SELECT display_name FROM consultants WHERE id = ?',
+                (current_user.consultant_id,)
+            ).fetchone()
+            if own_consultant:
+                selected_consultant_names = [own_consultant['display_name']]
+
+    if request.method == 'POST':
+        assignment_description = (request.form.get('assignment_description') or '').strip()
+        ai_provider = (request.form.get('ai_provider') or 'gemini').strip().lower()
+
+        if not assignment_description:
+            conn.close()
+            flash(get_translation('messages.assignment_description_required'), 'error')
+            return redirect(url_for('assignment_match'))
+
+        if current_user.is_admin():
+            raw_ids = request.form.getlist('consultant_ids')
+            selected_consultant_ids = []
+            for raw_id in raw_ids:
+                try:
+                    consultant_id = int(raw_id)
+                except (TypeError, ValueError):
+                    continue
+                if consultant_id not in selected_consultant_ids:
+                    selected_consultant_ids.append(consultant_id)
+
+            if not selected_consultant_ids:
+                conn.close()
+                flash(get_translation('messages.assignment_select_consultant_required'), 'error')
+                return redirect(url_for('assignment_match'))
+        else:
+            if not current_user.consultant_id:
+                conn.close()
+                flash(get_translation('messages.user_no_consultant_access'), 'error')
+                return redirect(url_for('index'))
+            selected_consultant_ids = [current_user.consultant_id]
+
+        consultant_payloads = []
+        for consultant_id in selected_consultant_ids:
+            payload = build_consultant_ai_payload(conn, consultant_id)
+            if not payload:
+                continue
+            consultant_payloads.append(payload)
+            selected_consultant_names.append(payload['consultant']['display_name'])
+
+        if not consultant_payloads:
+            conn.close()
+            flash(get_translation('messages.assignment_no_consultant_data'), 'error')
+            return redirect(url_for('assignment_match'))
+
+        match_result, consultants_json_input, error = match_assignment_with_ai(
+            assignment_description,
+            consultant_payloads,
+            ai_provider
+        )
+
+        if error:
+            conn.close()
+            flash(f"{get_translation('messages.assignment_match_failed')}: {error}", 'error')
+            return redirect(url_for('assignment_match'))
+
+        if match_result:
+            match_json_text = match_result.strip()
+            if match_json_text.startswith('```json'):
+                match_json_text = match_json_text[7:]
+            elif match_json_text.startswith('```'):
+                match_json_text = match_json_text[3:]
+
+            if match_json_text.endswith('```'):
+                match_json_text = match_json_text[:-3]
+
+            match_json_text = match_json_text.strip()
+
+            try:
+                parsed_result = json.loads(match_json_text)
+                if isinstance(parsed_result, dict):
+                    match_summary = parsed_result.get('summary')
+                    ranking_data = parsed_result.get('ranking')
+                    if isinstance(ranking_data, list):
+                        match_ranking = ranking_data
+                    recommended_data = parsed_result.get('recommended_consultant_names')
+                    if isinstance(recommended_data, list):
+                        recommended_names = recommended_data
+                    notes_data = parsed_result.get('notes')
+                    if isinstance(notes_data, list):
+                        match_notes = notes_data
+                else:
+                    match_result_parse_error = True
+            except json.JSONDecodeError:
+                match_result_parse_error = True
+
+        flash(get_translation('messages.assignment_match_success'), 'success')
+
+    conn.close()
+    return render_template(
+        'assignment_match.html',
+        all_consultants=all_consultants,
+        selected_consultant_ids=selected_consultant_ids,
+        selected_consultant_names=selected_consultant_names,
+        assignment_description=assignment_description,
+        ai_provider=ai_provider,
+        match_result=match_result,
+        match_summary=match_summary,
+        match_ranking=match_ranking,
+        recommended_names=recommended_names,
+        match_notes=match_notes,
+        match_result_parse_error=match_result_parse_error,
+        consultants_json_input=consultants_json_input,
+        has_groq=bool(GROQ_API_KEY)
+    )
+
+
 @app.route('/consultants/delete/<int:consultant_id>', methods=['POST'])
 @admin_required
 def delete_consultant(consultant_id):
@@ -1361,6 +1842,7 @@ def delete_consultant(consultant_id):
             session.pop('consultant_id', None)
     
     # Delete all related data
+    conn.execute('DELETE FROM users WHERE consultant_id = ?', (consultant_id,))
     conn.execute('DELETE FROM personal_info WHERE consultant_id = ?', (consultant_id,))
     conn.execute('DELETE FROM work_experience WHERE consultant_id = ?', (consultant_id,))
     conn.execute('DELETE FROM education WHERE consultant_id = ?', (consultant_id,))
@@ -1382,99 +1864,19 @@ def delete_consultant(consultant_id):
 def export_consultant(consultant_id):
     """Export a consultants data as JSON."""
     conn = get_db_connection()
-    consultant = conn.execute(
-        'SELECT id, display_name FROM consultants WHERE id = ?',
-        (consultant_id,)
-    ).fetchone()
+    payload = build_consultant_ai_payload(conn, consultant_id)
 
-    if not consultant:
+    if not payload:
         conn.close()
         flash(get_translation('messages.consultant_not_found'), 'error')
         return redirect(url_for('admin_dashboard'))
 
-    payload = {
-        'version': 1,
-        'consultant': {
-            'display_name': consultant['display_name']
-        },
-        'personal_info': None,
-        'work_experience': [],
-        'education': [],
-        'skills': [],
-        'projects': [],
-        'certifications': []
-    }
-
-    personal_info = conn.execute(
-        'SELECT * FROM personal_info WHERE consultant_id = ? ORDER BY id DESC LIMIT 1',
-        (consultant_id,)
-    ).fetchone()
-    if personal_info:
-        payload['personal_info'] = dict(personal_info)
-        payload['personal_info'].pop('id', None)
-        payload['personal_info'].pop('consultant_id', None)
-        payload['personal_info'].pop('created_at', None)
-        payload['personal_info'].pop('updated_at', None)
-
-    for table, key in [
-        ('work_experience', 'work_experience'),
-        ('education', 'education'),
-        ('skills', 'skills'),
-        ('projects', 'projects'),
-        ('certifications', 'certifications')
-    ]:
-        rows = conn.execute(
-            f'SELECT * FROM {table} WHERE consultant_id = ? ORDER BY id',
-            (consultant_id,)
-        ).fetchall()
-        payload[key] = []
-        for row in rows:
-            row_data = dict(row)
-            
-            # Special handling for skills to include category name
-            if table == 'skills' and row_data.get('category_id'):
-                cat = conn.execute('SELECT name FROM skill_categories WHERE id = ?', (row_data['category_id'],)).fetchone()
-                if cat:
-                    row_data['category_name'] = cat['name']
-
-            # Special handling for experience and projects to include linked skills
-            if table == 'work_experience':
-                skills = conn.execute('''
-                    SELECT s.skill_name 
-                    FROM skills s
-                    JOIN experience_skills es ON s.id = es.skill_id
-                    WHERE es.experience_id = ?
-                ''', (row['id'],)).fetchall()
-                row_data['skills'] = [s['skill_name'] for s in skills]
-            
-            if table == 'projects':
-                skills = conn.execute('''
-                    SELECT s.skill_name 
-                    FROM skills s
-                    JOIN project_skills ps ON s.id = ps.skill_id
-                    WHERE ps.project_id = ?
-                ''', (row['id'],)).fetchall()
-                row_data['skills'] = [s['skill_name'] for s in skills]
-            
-            # Special handling for certifications to include issue_year
-            if table == 'certifications' and row_data.get('issue_date'):
-                # Extract year from issue_date (format: YYYY-MM-DD)
-                issue_date_str = str(row_data['issue_date'])
-                if issue_date_str and len(issue_date_str) >= 4:
-                    row_data['issue_year'] = issue_date_str[:4]
-
-            row_data.pop('id', None)
-            row_data.pop('consultant_id', None)
-            row_data.pop('created_at', None)
-            row_data.pop('updated_at', None)
-            row_data.pop('category', None) # Remove old text category field if exists
-            row_data.pop('years_of_experience', None) # Remove legacy field if it exists in DB
-            payload[key].append(row_data)
+    payload['version'] = 1
 
     conn.close()
 
     # Sanitize display name for filename
-    safe_name = "".join([c if c.isalnum() else "_" for c in consultant['display_name']])
+    safe_name = "".join([c if c.isalnum() else "_" for c in payload['consultant']['display_name']])
     filename = f"{safe_name}.json"
     
     response = Response(
@@ -1671,6 +2073,7 @@ def add_work_experience():
 
 
 @app.route('/work-experience/edit/<int:id>', methods=['GET', 'POST'])
+@login_required
 def edit_work_experience(id):
     """Edit existing work experience."""
     conn = get_db_connection()
@@ -1747,6 +2150,7 @@ def edit_work_experience(id):
 
 
 @app.route('/work-experience/delete/<int:id>', methods=['POST'])
+@login_required
 def delete_work_experience(id):
     """Delete work experience."""
     conn = get_db_connection()
@@ -1778,6 +2182,7 @@ def view_education():
 
 
 @app.route('/education/add', methods=['GET', 'POST'])
+@login_required
 def add_education():
     """Add new education entry."""
     if request.method == 'POST':
@@ -1812,6 +2217,7 @@ def add_education():
 
 
 @app.route('/education/edit/<int:id>', methods=['GET', 'POST'])
+@login_required
 def edit_education(id):
     """Edit existing education entry."""
     conn = get_db_connection()
@@ -1853,6 +2259,7 @@ def edit_education(id):
 
 
 @app.route('/education/delete/<int:id>', methods=['POST'])
+@login_required
 def delete_education(id):
     """Delete education entry."""
     conn = get_db_connection()
@@ -1887,6 +2294,7 @@ def view_skills():
 
 
 @app.route('/skills/add', methods=['GET', 'POST'])
+@login_required
 def add_skill():
     """Add new skill."""
     if request.method == 'POST':
@@ -1913,6 +2321,7 @@ def add_skill():
 
 
 @app.route('/skills/edit/<int:id>', methods=['GET', 'POST'])
+@login_required
 def edit_skill(id):
     """Edit existing skill."""
     conn = get_db_connection()
@@ -1946,6 +2355,7 @@ def edit_skill(id):
 
 
 @app.route('/skills/delete/<int:id>', methods=['POST'])
+@login_required
 def delete_skill(id):
     """Delete skill."""
     conn = get_db_connection()
@@ -1992,6 +2402,7 @@ def view_projects():
 
 
 @app.route('/projects/add', methods=['GET', 'POST'])
+@login_required
 def add_project():
     """Add new project."""
     conn = get_db_connection()
@@ -2043,6 +2454,7 @@ def add_project():
 
 
 @app.route('/projects/edit/<int:id>', methods=['GET', 'POST'])
+@login_required
 def edit_project(id):
     """Edit existing project."""
     conn = get_db_connection()
@@ -2114,6 +2526,7 @@ def edit_project(id):
 
 
 @app.route('/projects/delete/<int:id>', methods=['POST'])
+@login_required
 def delete_project(id):
     """Delete project."""
     conn = get_db_connection()
@@ -2156,6 +2569,7 @@ def view_certifications():
 
 
 @app.route('/certifications/add', methods=['GET', 'POST'])
+@login_required
 def add_certification():
     """Add new certification."""
     if request.method == 'POST':
@@ -2188,6 +2602,7 @@ def add_certification():
 
 
 @app.route('/certifications/edit/<int:id>', methods=['GET', 'POST'])
+@login_required
 def edit_certification(id):
     """Edit existing certification."""
     conn = get_db_connection()
@@ -2227,6 +2642,7 @@ def edit_certification(id):
 
 
 @app.route('/certifications/delete/<int:id>', methods=['POST'])
+@login_required
 def delete_certification(id):
     """Delete certification."""
     conn = get_db_connection()

@@ -110,6 +110,8 @@ class User(UserMixin):
     @staticmethod
     def create_user(email, name, oauth_provider, oauth_id):
         """Create a new user from OAuth login"""
+        email = (email or '').lower().strip()
+
         # Check whitelist for role
         whitelist_entry = User.is_whitelisted(email)
         if not whitelist_entry:
@@ -129,19 +131,22 @@ class User(UserMixin):
         # If consultant role, create a consultant record
         consultant_id = None
         if role == 'consultant':
-            # Create consultant with user's name
-            cursor = conn.execute(
-                'INSERT INTO consultants (display_name) VALUES (?)',
-                (name or email.split('@')[0],)
-            )
-            consultant_id = cursor.lastrowid
-            
-            # Create personal_info entry for the consultant
-            conn.execute('''
-                INSERT INTO personal_info (consultant_id, first_name, last_name, email)
-                VALUES (?, ?, ?, ?)
-            ''', (consultant_id, name.split()[0] if name and ' ' in name else name or '',
-                  name.split()[-1] if name and ' ' in name else '', email))
+            consultant_id = find_consultant_id_by_email(conn, email)
+
+            if not consultant_id:
+                # Create consultant with user's name
+                cursor = conn.execute(
+                    'INSERT INTO consultants (display_name) VALUES (?)',
+                    (name or email.split('@')[0],)
+                )
+                consultant_id = cursor.lastrowid
+
+                # Create personal_info entry for the consultant
+                conn.execute('''
+                    INSERT INTO personal_info (consultant_id, first_name, last_name, email)
+                    VALUES (?, ?, ?, ?)
+                ''', (consultant_id, name.split()[0] if name and ' ' in name else name or '',
+                      name.split()[-1] if name and ' ' in name else '', email))
         
         # Create user
         cursor = conn.execute('''
@@ -253,3 +258,24 @@ def get_all_consultants():
     ''').fetchall()
     conn.close()
     return consultants
+
+
+def find_consultant_id_by_email(conn, email):
+    """Find an existing consultant linked to a personal_info email."""
+    if not email:
+        return None
+
+    row = conn.execute(
+        '''
+            SELECT consultant_id
+            FROM personal_info
+            WHERE lower(email) = ? AND consultant_id IS NOT NULL
+            ORDER BY updated_at DESC, id DESC
+            LIMIT 1
+        ''',
+        (email.lower().strip(),)
+    ).fetchone()
+
+    if row:
+        return row['consultant_id']
+    return None

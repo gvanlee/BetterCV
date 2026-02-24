@@ -1,0 +1,320 @@
+{% extends "base.html" %}
+
+{% block title %}{{ t.assignment_match.title }} - {{ t.app_name }}{% endblock %}
+
+{% block content %}
+<div class="loading-overlay" id="loadingOverlay">
+    <div class="loading-content">
+        <div class="loading-spinner"></div>
+        <div class="loading-text">{{ t.assignment_match.processing }}</div>
+        <div class="loading-subtext">{{ t.assignment_match.processing_note }}</div>
+    </div>
+</div>
+
+<div class="page-header">
+    <h2>{{ t.assignment_match.title }}</h2>
+</div>
+
+<div class="admin-container">
+    <div class="admin-section">
+        <form method="POST" class="form" id="matchForm">
+            <div class="form-section">
+                <h3>{{ t.assignment_match.input_title }}</h3>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="assignment_description">{{ t.assignment_match.assignment_description_label }} *</label>
+                        <textarea id="assignment_description" name="assignment_description" required style="min-height: 180px;">{{ assignment_description or '' }}</textarea>
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="ai_provider">{{ t.assignment_match.ai_provider_label }}</label>
+                        <select id="ai_provider" name="ai_provider">
+                            <option value="gemini" {% if ai_provider == 'gemini' %}selected{% endif %}>Gemini</option>
+                            {% if has_groq %}
+                            <option value="groq" {% if ai_provider == 'groq' %}selected{% endif %}>Groq</option>
+                            {% endif %}
+                        </select>
+                    </div>
+                </div>
+
+                {% if current_user.is_admin() %}
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>{{ t.assignment_match.consultants_label }} *</label>
+                        {% if all_consultants %}
+                        <div class="consultant-checklist">
+                            {% for consultant in all_consultants %}
+                            <label class="consultant-item">
+                                <input
+                                    type="checkbox"
+                                    name="consultant_ids"
+                                    value="{{ consultant['id'] }}"
+                                    {% if consultant['id'] in selected_consultant_ids %}checked{% endif %}
+                                >
+                                <span>{{ consultant['display_name'] }}</span>
+                            </label>
+                            {% endfor %}
+                        </div>
+                        {% else %}
+                        <p class="empty-state-text">{{ t.assignment_match.no_consultants }}</p>
+                        {% endif %}
+                    </div>
+                </div>
+                {% else %}
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>{{ t.assignment_match.consultants_label }}</label>
+                        <p class="selected-consultants">
+                            {% if selected_consultant_names %}
+                                {{ selected_consultant_names | join(', ') }}
+                            {% else %}
+                                {{ t.assignment_match.current_user_data }}
+                            {% endif %}
+                        </p>
+                    </div>
+                </div>
+                {% endif %}
+
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-primary" id="submitBtn">{{ t.assignment_match.match_button }}</button>
+                </div>
+            </div>
+        </form>
+    </div>
+
+    {% if match_result %}
+    <div class="admin-section">
+        <div class="form-section">
+            <h3>{{ t.assignment_match.result_title }}</h3>
+
+            {% if match_summary %}
+            <p class="match-summary">{{ match_summary }}</p>
+            {% endif %}
+
+            {% if recommended_names %}
+            <div class="recommendations">
+                <strong>{{ t.assignment_match.recommended_label }}:</strong>
+                <div class="name-tags">
+                    {% for name in recommended_names %}
+                    <span class="name-tag">{{ name }}</span>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+
+            {% if match_ranking %}
+            <div class="table-wrapper">
+                <table class="match-table">
+                    <thead>
+                        <tr>
+                            <th>{{ t.assignment_match.rank_label }}</th>
+                            <th>{{ t.assignment_match.consultant_label }}</th>
+                            <th>{{ t.assignment_match.score_label }}</th>
+                            <th>{{ t.assignment_match.rationale_label }}</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in match_ranking %}
+                        <tr>
+                            <td>{{ row.get('rank', loop.index) }}</td>
+                            <td>{{ row.get('consultant_name', '-') }}</td>
+                            <td>{{ row.get('fit_score', '-') }}</td>
+                            <td>{{ row.get('rationale', '-') }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="rank-details">
+                {% for row in match_ranking %}
+                <div class="rank-card">
+                    <h4>{{ row.get('rank', loop.index) }}. {{ row.get('consultant_name', '-') }}</h4>
+                    {% if row.get('strengths') %}
+                    <p class="detail-label">{{ t.assignment_match.strengths_label }}</p>
+                    <ul>
+                        {% for item in row.get('strengths', []) %}
+                        <li>{{ item }}</li>
+                        {% endfor %}
+                    </ul>
+                    {% endif %}
+
+                    {% if row.get('gaps') %}
+                    <p class="detail-label">{{ t.assignment_match.gaps_label }}</p>
+                    <ul>
+                        {% for item in row.get('gaps', []) %}
+                        <li>{{ item }}</li>
+                        {% endfor %}
+                    </ul>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+
+            {% if match_notes %}
+            <div class="notes-block">
+                <p class="detail-label">{{ t.assignment_match.notes_label }}</p>
+                <ul>
+                    {% for note in match_notes %}
+                    <li>{{ note }}</li>
+                    {% endfor %}
+                </ul>
+            </div>
+            {% endif %}
+
+            {% if match_result_parse_error %}
+            <p class="empty-state-text">{{ t.assignment_match.unstructured_result_hint }}</p>
+            {% endif %}
+
+            {% if match_result_parse_error or (not match_ranking and not match_summary) %}
+            <h4>{{ t.assignment_match.raw_result_title }}</h4>
+            <pre class="result-output">{{ match_result }}</pre>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+
+    {% if consultants_json_input %}
+    <div class="admin-section">
+        <div class="form-section">
+            <h3>{{ t.assignment_match.json_input_title }}</h3>
+            <pre class="result-output">{{ consultants_json_input }}</pre>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<style>
+.admin-container {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+.admin-section {
+    background: var(--card-background);
+    border-radius: 8px;
+    padding: 1.5rem;
+    box-shadow: var(--shadow);
+}
+
+.consultant-checklist {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+}
+
+.consultant-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: var(--background);
+}
+
+.selected-consultants,
+.empty-state-text {
+    margin: 0;
+    color: var(--text-secondary);
+}
+
+.match-summary {
+    margin: 0 0 1rem 0;
+    color: var(--text-primary);
+}
+
+.recommendations {
+    margin-bottom: 1rem;
+}
+
+.name-tags {
+    margin-top: 0.5rem;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.name-tag {
+    display: inline-block;
+    padding: 0.25rem 0.6rem;
+    border: 1px solid var(--border-color);
+    border-radius: 999px;
+    background: var(--background);
+}
+
+.table-wrapper {
+    overflow-x: auto;
+    margin-bottom: 1rem;
+}
+
+.match-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.match-table th,
+.match-table td {
+    border: 1px solid var(--border-color);
+    padding: 0.5rem;
+    text-align: left;
+    vertical-align: top;
+}
+
+.match-table th {
+    background: var(--background);
+}
+
+.rank-details {
+    display: grid;
+    gap: 0.75rem;
+}
+
+.rank-card {
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 0.75rem;
+    background: var(--background);
+}
+
+.rank-card h4 {
+    margin: 0 0 0.5rem 0;
+}
+
+.detail-label {
+    margin: 0.5rem 0 0.25rem 0;
+    font-weight: 600;
+}
+
+.notes-block {
+    margin-top: 1rem;
+}
+
+.result-output {
+    margin: 0;
+    padding: 1rem;
+    background: var(--background);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-family: "Courier New", monospace;
+    font-size: 0.875rem;
+}
+</style>
+
+<script>
+    document.getElementById('matchForm').addEventListener('submit', function(e) {
+        // Show loading overlay
+        document.getElementById('loadingOverlay').classList.add('active');
+        // Disable submit button to prevent double submission
+        document.getElementById('submitBtn').disabled = true;
+    });
+</script>
+{% endblock %}

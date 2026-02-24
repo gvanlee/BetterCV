@@ -64,6 +64,19 @@ def init_database():
         )
     ''')
 
+    # One-Time Email Login Tokens
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS email_login_tokens (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            token_hash TEXT UNIQUE NOT NULL,
+            expires_at TIMESTAMP NOT NULL,
+            used_at TIMESTAMP,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+    ''')
+
     # Personal Information Table
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS personal_info (

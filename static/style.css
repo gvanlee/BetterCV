@@ -1045,6 +1045,21 @@ footer p {
     height: 24px;
 }
 
+.auth-separator {
+    text-align: center;
+    color: var(--text-secondary);
+    margin: 0 0 1rem;
+    font-size: 0.875rem;
+}
+
+.email-login-form {
+    margin-bottom: 2rem;
+}
+
+.email-login-form .form-group {
+    margin-bottom: 1rem;
+}
+
 .auth-help {
     text-align: center;
     padding-top: 1.5rem;
