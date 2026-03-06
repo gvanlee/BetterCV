@@ -42,14 +42,17 @@
             {% endif %}
 
             {% if show_email_login %}
-            <div class="auth-separator">{{ t.auth.or }}</div>
-            <form method="POST" action="{{ url_for('auth_email_request') }}" class="email-login-form">
-                <div class="form-group">
-                    <label for="email">{{ t.auth.email_address }}</label>
-                    <input type="email" id="email" name="email" required autocomplete="email" placeholder="{{ t.auth.email_placeholder }}">
+                <div class="auth-separator">{{ t.auth.or }}</div>
+                <div class="oauth-buttons">
+                    <form method="POST" action="{{ url_for('auth_email_request') }}" class="email-login-form">
+                        <div class="form-group">
+                            <label for="email">{{ t.auth.email_address }}</label>
+                            <input type="email" id="email" name="email" required autocomplete="email" placeholder="{{ t.auth.email_placeholder }}">
+                        </div>
+                        
+                        <button type="submit" class="btn btn-oauth">{{ t.auth.send_magic_link }}</button>
+                    </form>
                 </div>
-                <button type="submit" class="btn btn-oauth">{{ t.auth.send_magic_link }}</button>
-            </form>
             {% endif %}
 
             <div class="auth-help">

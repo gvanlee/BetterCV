@@ -305,6 +305,7 @@ body {
     margin: 0;
     overflow: visible;
     text-transform: none;
+    appearance: button;
     -webkit-appearance: button;
 }
 
@@ -1056,6 +1057,10 @@ footer p {
     margin-bottom: 2rem;
 }
 
+.email-login-form .btn-oauth {
+    width: 100%;
+}
+
 .email-login-form .form-group {
     margin-bottom: 1rem;
 }
@@ -1080,6 +1085,8 @@ footer p {
         padding: 2rem 1.5rem;
     }
 }
+
+.login-help h4 {
     font-weight: 600;
     margin-bottom: 0.5rem;
     color: var(--text-primary);
@@ -1206,6 +1213,32 @@ footer p {
     font-size: 0.875rem;
 }
 
+/* ===== Consultant Checklist ===== */
+.consultant-checklist {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.consultant-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    cursor: pointer;
+    padding: 0.25rem 0;
+}
+
+.consultant-item input[type="checkbox"] {
+    width: auto;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
+.consultant-item span {
+    cursor: pointer;
+    user-select: none;
+}
+
 /* Responsive Auth Styles */
 @media (max-width: 768px) {
     .user-info {
@@ -1226,3 +1259,4 @@ footer p {
         padding: 0.5rem;
     }
 }
+

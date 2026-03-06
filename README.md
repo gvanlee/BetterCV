@@ -7,7 +7,7 @@ A Python application for managing and maintaining resume data using SQLite datab
 - Store all resume data in a structured database
 - Web-based forms for easy data entry and editing
 - Manage personal info, work experience, education, skills, projects, and certifications
-- **AI-powered CV parsing** using Google Gemini - automatically extract data from existing CVs (PDF, DOCX, TXT)
+- **AI-powered CV parsing** using Google Gemini, Groq, or local Ollama - automatically extract data from existing CVs (PDF, DOCX, TXT)
 - **Multi-consultant support** - manage multiple consultant profiles with easy switching
 - **Multi-language support** (English and Dutch) with easy language switching
 - Import/export consultant data in JSON format
@@ -15,7 +15,7 @@ A Python application for managing and maintaining resume data using SQLite datab
 
 ## AI-Powered CV Parsing
 
-The application includes an AI-powered feature that can automatically parse existing CVs and extract structured information using Google's Gemini AI.
+The application includes AI-powered features that can automatically parse existing CVs and extract structured information using Google Gemini, Groq, or local Ollama.
 
 ### Supported File Formats
 - PDF files (.pdf)
@@ -28,7 +28,18 @@ The application includes an AI-powered feature that can automatically parse exis
    ```bash
    export GEMINI_API_KEY="your-gemini-api-key-here"
    ```
-3. The "Parse CV with AI" button will appear on the consultants page
+3. Optional: Configure Groq:
+   ```bash
+   export GROQ_API_KEY="your-groq-api-key-here"
+   ```
+4. Optional: Configure local Ollama (defaults already work for local install):
+   ```bash
+   export OLLAMA_ENABLED=true
+   export OLLAMA_BASE_URL="http://localhost:11434"
+   export OLLAMA_MODEL="orca2"
+   export OLLAMA_TIMEOUT_SECONDS=180
+   ```
+5. In Docker, use `host.docker.internal` when Ollama runs on the host machine.
 
 ### How it works
 1. Upload your CV file via the web interface
@@ -231,6 +242,10 @@ docker-compose up -d
    ```yaml
    environment:
      - GEMINI_API_KEY=your-gemini-api-key-here
+       - GROQ_API_KEY=your-groq-api-key-here
+       - OLLAMA_ENABLED=true
+       - OLLAMA_BASE_URL=http://host.docker.internal:11434
+       - OLLAMA_MODEL=orca2
    ```
 
 3. Open your browser to: http://localhost:5000
@@ -249,9 +264,13 @@ The database will be persisted in the `./data` directory.
    pip install -r requirements.txt
    ```
 
-2. **For AI features**: Set the Gemini API key:
+2. **For AI features**: Set one or more AI provider settings:
    ```bash
    export GEMINI_API_KEY="your-gemini-api-key-here"
+   export GROQ_API_KEY="your-groq-api-key-here"
+   export OLLAMA_ENABLED=true
+   export OLLAMA_BASE_URL="http://localhost:11434"
+   export OLLAMA_MODEL="orca2"
    ```
 
 3. Initialize the database:

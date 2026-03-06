@@ -25,7 +25,18 @@
             {% for consultant in all_consultants %}
             {% set is_current = current_consultant and consultant['id'] == current_consultant['id'] %}
             <div class="consultant-row">
-                <span class="consultant-name{% if is_current %} is-active{% endif %}">{{ consultant['display_name'] }}</span>
+                <div class="consultant-info">
+                    <span class="consultant-name{% if is_current %} is-active{% endif %}">
+                        {{ consultant['display_name'] }}
+                        
+                        <div class="completeness-track" role="img" aria-label="{{ t.consultants.completeness_label }} {{ consultant['completeness_pct'] }}%">
+                            <div class="completeness-fill{% if consultant['completed_sections'] == consultant['total_sections'] %} is-complete{% endif %}" style="width: {{ consultant['completeness_pct'] }}%;"></div>
+                        </div>
+                    </span>
+                    <span class="consultant-completeness">
+                        
+                    </span>
+                </div>
                 <div class="consultant-actions">
                     {% if not is_current %}
                     <a href="{{ url_for('switch_consultant', consultant_id=consultant['id']) }}" class="btn btn-small btn-primary">{{ t.consultants.switch_button }}</a>
@@ -131,6 +142,14 @@
     background: var(--background);
 }
 
+.consultant-info {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    flex: 1;
+    min-width: 0;
+}
+
 .consultant-name {
     padding: 0.2rem 0.5rem;
     border-radius: 6px;
@@ -141,6 +160,35 @@
 
 .consultant-name.is-active {
     border-color: var(--primary-color);
+}
+
+.consultant-completeness {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+}
+
+.completeness-label {
+    font-size: 0.82rem;
+    color: var(--text-secondary);
+}
+
+.completeness-track {
+    width: min(320px, 100%);
+    height: 6px;
+    border-radius: 999px;
+    overflow: hidden;
+    background: var(--card-background);
+    border: 1px solid var(--border-color);
+}
+
+.completeness-fill {
+    height: 100%;
+    background: var(--primary-color);
+}
+
+.completeness-fill.is-complete {
+    background: var(--success-color);
 }
 
 .consultant-actions {

@@ -58,12 +58,6 @@
             <small>{{ t.certifications.description_help }}</small>
         </div>
 
-        <div class="form-group">
-            <label for="display_order">{{ t.certifications.display_order }}</label>
-            <input type="number" id="display_order" name="display_order" 
-                   value="{{ certification['display_order'] if certification else 0 }}" min="0">
-            <small>{{ t.certifications.display_order_help }}</small>
-        </div>
     </div>
 
     <div class="form-actions">

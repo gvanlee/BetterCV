@@ -63,7 +63,7 @@ The JSON should match this exact schema:
   ],
   "projects": [
     {{
-      "name": "Project Name",
+      "project_name": "Project Name",
       "description": "Project description",
       "start_date": "YYYY-MM-DD",
       "end_date": "YYYY-MM-DD or null",
@@ -72,7 +72,7 @@ The JSON should match this exact schema:
   ],
   "certifications": [
     {{
-      "name": "Certification Name/Course Name or name of issuing organization if specific certification name is not mentioned",
+      "certification_name": "Certification Name/Course Name or name of issuing organization if specific certification or course name is not mentioned",
       "issuing_organization": "Issuing Organization",
       "issue_date": "YYYY-MM-DD",
       "expiry_date": "YYYY-MM-DD or null",
@@ -94,6 +94,8 @@ Rules:
 - Certifications: if a location for the organization is mentioned,
   add that to the organization field. Make sure to extract the name of the
   certification or course if mentioned.
+- Skills: if you find a list of skills (e.g. comma separated or bullet points), 
+  make sure to capture those as individual skill entries in the skills array.
 - If bullet points are used in the CV, use markdown formatting in
   the JSON output to preserve the bullet points in description fields.
 - Dates are normally formatted as European dates, so DD-MM-YYYY.

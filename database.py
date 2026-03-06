@@ -117,7 +117,6 @@ def init_database():
             star_tasks TEXT,
             star_actions TEXT,
             star_results TEXT,
-            display_order INTEGER DEFAULT 0,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
@@ -134,8 +133,7 @@ def init_database():
         ('star_situation', 'TEXT'),
         ('star_tasks', 'TEXT'),
         ('star_actions', 'TEXT'),
-        ('star_results', 'TEXT'),
-        ('display_order', 'INTEGER DEFAULT 0')
+        ('star_results', 'TEXT')
     ]
     
     for col_name, col_type in potential_columns:
@@ -156,7 +154,6 @@ def init_database():
             gpa TEXT,
             honors TEXT,
             description TEXT,
-            display_order INTEGER DEFAULT 0,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
@@ -171,7 +168,6 @@ def init_database():
             category TEXT,
             category_id INTEGER,
             proficiency_level TEXT,
-            display_order INTEGER DEFAULT 0,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (category_id) REFERENCES skill_categories(id)
@@ -263,7 +259,6 @@ def init_database():
             github_url TEXT,
             role TEXT,
             achievements TEXT,
-            display_order INTEGER DEFAULT 0,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
@@ -281,7 +276,6 @@ def init_database():
             credential_id TEXT,
             credential_url TEXT,
             description TEXT,
-            display_order INTEGER DEFAULT 0,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
@@ -295,6 +289,16 @@ def init_database():
                 f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_definition}"
             )
 
+    def drop_column_if_exists(table_name, column_name):
+        columns = conn.execute(f"PRAGMA table_info({table_name})").fetchall()
+        column_names = {column['name'] for column in columns}
+        if column_name not in column_names:
+            return
+        try:
+            conn.execute(f"ALTER TABLE {table_name} DROP COLUMN {column_name}")
+        except sqlite3.OperationalError:
+            pass
+
     # Backfill consultant_id columns for existing databases
     for table in [
         'personal_info',
@@ -305,6 +309,15 @@ def init_database():
         'certifications'
     ]:
         ensure_column(table, 'consultant_id', 'INTEGER')
+
+    for table in [
+        'work_experience',
+        'education',
+        'skills',
+        'projects',
+        'certifications'
+    ]:
+        drop_column_if_exists(table, 'display_order')
 
     existing_consultant = conn.execute(
         'SELECT id FROM consultants ORDER BY id LIMIT 1'

@@ -18,10 +18,12 @@ import PyPDF2
 import docx
 import io
 import tempfile
+import urllib.request
+import urllib.error
 from ai_prompts import get_cv_parse_prompt, get_assignment_match_prompt
 
 # Import authentication modules
-from auth import User, get_all_users, get_all_whitelist, add_to_whitelist, remove_from_whitelist, update_user_role, deactivate_user, get_all_consultants
+from auth import User, get_all_users, get_all_whitelist, add_to_whitelist, remove_from_whitelist, update_user_role, deactivate_user
 from decorators import admin_required, consultant_or_admin_required, check_consultant_access
 
 # Load environment variables
@@ -647,7 +649,9 @@ def admin_dashboard():
 @admin_required
 def consultants_management():
     """Consultants management page"""
-    consultants = get_all_consultants()
+    conn = get_db_connection()
+    consultants = get_consultants_with_completeness(conn)
+    conn.close()
     return render_template('consultants_management.html',
                          all_consultants=consultants)
 
@@ -774,6 +778,43 @@ def get_consultants(conn):
     ).fetchall()
 
 
+def get_consultants_with_completeness(conn):
+    """Retrieve all consultants with section completeness metadata."""
+    rows = conn.execute('''
+        SELECT
+            c.id,
+            c.display_name,
+            CASE WHEN EXISTS (SELECT 1 FROM personal_info pi WHERE pi.consultant_id = c.id) THEN 1 ELSE 0 END AS has_personal_info,
+            CASE WHEN EXISTS (SELECT 1 FROM work_experience we WHERE we.consultant_id = c.id) THEN 1 ELSE 0 END AS has_work_experience,
+            CASE WHEN EXISTS (SELECT 1 FROM education e WHERE e.consultant_id = c.id) THEN 1 ELSE 0 END AS has_education,
+            CASE WHEN EXISTS (SELECT 1 FROM skills s WHERE s.consultant_id = c.id) THEN 1 ELSE 0 END AS has_skills,
+            CASE WHEN EXISTS (SELECT 1 FROM projects p WHERE p.consultant_id = c.id) THEN 1 ELSE 0 END AS has_projects,
+            CASE WHEN EXISTS (SELECT 1 FROM certifications cert WHERE cert.consultant_id = c.id) THEN 1 ELSE 0 END AS has_certifications
+        FROM consultants c
+        ORDER BY c.display_name, c.id
+    ''').fetchall()
+
+    total_sections = 6
+    consultants = []
+
+    for row in rows:
+        consultant = dict(row)
+        completed_sections = sum([
+            consultant['has_personal_info'],
+            consultant['has_work_experience'],
+            consultant['has_education'],
+            consultant['has_skills'],
+            consultant['has_projects'],
+            consultant['has_certifications']
+        ])
+        consultant['completed_sections'] = completed_sections
+        consultant['total_sections'] = total_sections
+        consultant['completeness_pct'] = round((completed_sections / total_sections) * 100)
+        consultants.append(consultant)
+
+    return consultants
+
+
 def resolve_current_consultant_id(conn):
     if current_user.is_authenticated and not current_user.is_admin():
         if not current_user.consultant_id:
@@ -806,6 +847,80 @@ def resolve_current_consultant_id(conn):
         return first['id']
 
     return None
+
+
+def flash_foreign_data_access_warning():
+    flash(get_translation('messages.foreign_data_access_denied'), 'warning')
+
+
+def audit_foreign_data_access(table_name, record_id):
+    user_id = getattr(current_user, 'id', None)
+    user_email = getattr(current_user, 'email', None)
+    app.logger.warning(
+        'Unauthorized data access attempt: user_id=%s email=%s role=%s consultant_id=%s table=%s record_id=%s endpoint=%s path=%s ip=%s',
+        user_id,
+        user_email,
+        getattr(current_user, 'role', None),
+        getattr(current_user, 'consultant_id', None),
+        table_name,
+        record_id,
+        request.endpoint,
+        request.path,
+        request.remote_addr
+    )
+
+
+def get_editable_record(conn, table_name, record_id, consultant_id, not_found_message_key='messages.record_not_found'):
+    """Get a record for editing/deleting with ownership checks for consultants."""
+    if current_user.is_admin():
+        record = conn.execute(
+            f'SELECT * FROM {table_name} WHERE id = ?',
+            (record_id,)
+        ).fetchone()
+        if not record:
+            flash(get_translation(not_found_message_key), 'error')
+        return record
+
+    record = conn.execute(
+        f'SELECT * FROM {table_name} WHERE id = ? AND consultant_id = ?',
+        (record_id, consultant_id)
+    ).fetchone()
+    if record:
+        return record
+
+    existing = conn.execute(
+        f'SELECT id FROM {table_name} WHERE id = ?',
+        (record_id,)
+    ).fetchone()
+    if existing:
+        audit_foreign_data_access(table_name, record_id)
+        flash_foreign_data_access_warning()
+    else:
+        flash(get_translation(not_found_message_key), 'error')
+
+    return None
+
+
+def filter_skill_ids_for_consultant(conn, consultant_id, raw_skill_ids):
+    """Return only skill ids that belong to the provided consultant."""
+    skill_ids = []
+    for raw_skill_id in raw_skill_ids:
+        try:
+            skill_id = int(raw_skill_id)
+        except (TypeError, ValueError):
+            continue
+        if skill_id not in skill_ids:
+            skill_ids.append(skill_id)
+
+    if not skill_ids:
+        return []
+
+    placeholders = ','.join(['?'] * len(skill_ids))
+    rows = conn.execute(
+        f'SELECT id FROM skills WHERE consultant_id = ? AND id IN ({placeholders})',
+        [consultant_id, *skill_ids]
+    ).fetchall()
+    return [row['id'] for row in rows]
 
 
 @app.before_request
@@ -869,6 +984,12 @@ GROQ_API_KEY = os.getenv('GROQ_API_KEY')
 groq_client = None
 if GROQ_API_KEY:
     groq_client = Groq(api_key=GROQ_API_KEY)
+
+# Configure Ollama (local by default)
+OLLAMA_ENABLED = env_flag('OLLAMA_ENABLED', True)
+OLLAMA_BASE_URL = os.getenv('OLLAMA_BASE_URL', 'http://localhost:11434').strip().rstrip('/')
+OLLAMA_MODEL = os.getenv('OLLAMA_MODEL', 'orca2').strip() or 'orca2'
+OLLAMA_TIMEOUT_SECONDS = int(os.getenv('OLLAMA_TIMEOUT_SECONDS', '180'))
 
 # ==================== CV Parsing Data Storage ====================
 
@@ -956,18 +1077,24 @@ def extract_text_from_file(file):
     file.seek(0)  # Reset file pointer
     
     if filename.endswith('.pdf'):
-        return extract_text_from_pdf(file_content)
+        result = extract_text_from_pdf(file_content)
     elif filename.endswith(('.docx', '.doc')):
-        return extract_text_from_docx(file_content)
+        result = extract_text_from_docx(file_content)
     elif filename.endswith('.txt'):
-        return file_content.decode('utf-8', errors='ignore')
+        result = file_content.decode('utf-8', errors='ignore')
     else:
-        return "Unsupported file type. Please upload PDF, DOCX, or TXT files."
+        result = "Unsupported file type. Please upload PDF, DOCX, or TXT files."
+    
+    with open(os.path.join(get_cv_temp_dir(), 'last_uploaded_cv.txt'), 'w', encoding='utf-8') as f:
+        f.write(result)  # Store a preview of the last uploaded CV for debugging
+
+    return result
 
 
 def parse_cv_with_ai(cv_text, provider='gemini'):
     """Parse CV text using chosen AI provider and return structured data."""
     prompt = get_cv_parse_prompt(cv_text)
+    provider = (provider or 'gemini').strip().lower()
     
     if provider == 'gemini':
         if not GEMINI_API_KEY or genai_client is None:
@@ -1000,6 +1127,42 @@ def parse_cv_with_ai(cv_text, provider='gemini'):
             json_text = response.choices[0].message.content
         except Exception as e:
             return None, f"Groq error: {str(e)}"
+    elif provider == 'ollama':
+        if not OLLAMA_ENABLED:
+            return None, "Ollama provider is disabled."
+
+        payload = {
+            "model": OLLAMA_MODEL,
+            "messages": [
+                {"role": "system", "content": "You are a specialized CV parsing assistant. Always respond with valid JSON only."},
+                {"role": "user", "content": prompt}
+            ],
+            "format": "json",
+            "stream": False
+        }
+
+        request_body = json.dumps(payload).encode('utf-8')
+        api_url = f"{OLLAMA_BASE_URL}/api/chat"
+        ollama_request = urllib.request.Request(
+            api_url,
+            data=request_body,
+            headers={'Content-Type': 'application/json'},
+            method='POST'
+        )
+
+        try:
+            with urllib.request.urlopen(ollama_request, timeout=OLLAMA_TIMEOUT_SECONDS) as response:
+                response_data = json.loads(response.read().decode('utf-8'))
+
+            json_text = response_data.get('message', {}).get('content', '').strip()
+            if not json_text:
+                return None, "No response from Ollama"
+        except urllib.error.HTTPError as e:
+            return None, f"Ollama HTTP error: {e.code} {e.reason}"
+        except urllib.error.URLError as e:
+            return None, f"Ollama connection error: {e.reason}"
+        except Exception as e:
+            return None, f"Ollama error: {str(e)}"
     else:
         return None, f"Unknown AI provider: {provider}"
 
@@ -1022,6 +1185,7 @@ def match_assignment_with_ai(assignment_description, consultant_payloads, provid
     """Match assignment text against selected consultant profiles using AI."""
     consultants_json = json.dumps(consultant_payloads, indent=2, ensure_ascii=False)
     prompt = get_assignment_match_prompt(assignment_description, consultants_json)
+    provider = (provider or 'gemini').strip().lower()
 
     if provider == 'gemini':
         if not GEMINI_API_KEY or genai_client is None:
@@ -1053,6 +1217,44 @@ def match_assignment_with_ai(assignment_description, consultant_payloads, provid
             return response.choices[0].message.content, consultants_json, None
         except Exception as e:
             return None, consultants_json, f"Groq error: {str(e)}"
+
+    if provider == 'ollama':
+        if not OLLAMA_ENABLED:
+            return None, consultants_json, "Ollama provider is disabled."
+
+        payload = {
+            "model": OLLAMA_MODEL,
+            "messages": [
+                {"role": "system", "content": "You are a recruitment matching assistant. Return valid JSON only."},
+                {"role": "user", "content": prompt}
+            ],
+            "format": "json",
+            "stream": False
+        }
+
+        request_body = json.dumps(payload).encode('utf-8')
+        api_url = f"{OLLAMA_BASE_URL}/api/chat"
+        ollama_request = urllib.request.Request(
+            api_url,
+            data=request_body,
+            headers={'Content-Type': 'application/json'},
+            method='POST'
+        )
+
+        try:
+            with urllib.request.urlopen(ollama_request, timeout=OLLAMA_TIMEOUT_SECONDS) as response:
+                response_data = json.loads(response.read().decode('utf-8'))
+
+            match_text = response_data.get('message', {}).get('content', '').strip()
+            if not match_text:
+                return None, consultants_json, "No response from Ollama"
+            return match_text, consultants_json, None
+        except urllib.error.HTTPError as e:
+            return None, consultants_json, f"Ollama HTTP error: {e.code} {e.reason}"
+        except urllib.error.URLError as e:
+            return None, consultants_json, f"Ollama connection error: {e.reason}"
+        except Exception as e:
+            return None, consultants_json, f"Ollama error: {str(e)}"
 
     return None, consultants_json, f"Unknown AI provider: {provider}"
 
@@ -1330,9 +1532,8 @@ def import_consultant_data(conn, consultant_id, payload):
             INSERT INTO work_experience (
                 consultant_id, company_name, position_title, location, start_date,
                 end_date, is_current, description, achievements, 
-                star_situation, star_tasks, star_actions, star_results,
-                display_order
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                star_situation, star_tasks, star_actions, star_results
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (
             consultant_id,
             exp.get('company_name', ''),
@@ -1346,8 +1547,7 @@ def import_consultant_data(conn, consultant_id, payload):
             exp.get('star_situation', ''),
             exp.get('star_tasks', ''),
             exp.get('star_actions', ''),
-            exp.get('star_results', ''),
-            exp.get('display_order', 0)
+            exp.get('star_results', '')
         ))
         
         # Link skills to work experience
@@ -1377,8 +1577,8 @@ def import_consultant_data(conn, consultant_id, payload):
         conn.execute('''
             INSERT INTO education (
                 consultant_id, institution_name, degree, field_of_study, location,
-                start_date, end_date, gpa, honors, description, display_order
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                start_date, end_date, gpa, honors, description
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (
             consultant_id,
             edu.get('institution_name', edu.get('institution', '')),
@@ -1389,8 +1589,7 @@ def import_consultant_data(conn, consultant_id, payload):
             edu.get('end_date', None),
             edu.get('gpa', ''),
             edu.get('honors', ''),
-            edu.get('description', ''),
-            edu.get('display_order', 0)
+            edu.get('description', '')
         ))
 
     seen_projects = set()
@@ -1404,25 +1603,24 @@ def import_consultant_data(conn, consultant_id, payload):
         )
         if project_key in seen_projects:
             continue
+
         seen_projects.add(project_key)
         cursor = conn.execute('''
             INSERT INTO projects (
                 consultant_id, project_name, description,
-                start_date, end_date, project_url, github_url, role, achievements,
-                display_order
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ''', (
-            consultant_id,
-            project.get('project_name', ''),
-            project.get('description', ''),
-            project.get('start_date', None),
-            project.get('end_date', None),
-            project.get('project_url', ''),
-            project.get('github_url', ''),
-            project.get('role', ''),
-            project.get('achievements', ''),
-            project.get('display_order', 0)
-        ))
+                start_date, end_date, project_url, github_url, role, achievements
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (
+                consultant_id,
+                project.get('project_name', ''),
+                project.get('description', ''),
+                project.get('start_date', None),
+                project.get('end_date', None),
+                project.get('project_url', ''),
+                project.get('github_url', ''),
+                project.get('role', ''),
+                project.get('achievements', '')
+            ))
         
         # Link skills to projects
         proj_id = cursor.lastrowid
@@ -1450,9 +1648,8 @@ def import_consultant_data(conn, consultant_id, payload):
         conn.execute('''
             INSERT INTO certifications (
                 consultant_id, certification_name, issuing_organization, issue_date,
-                expiration_date, credential_id, credential_url, description,
-                display_order
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                expiration_date, credential_id, credential_url, description
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         ''', (
             consultant_id,
             cert.get('certification_name', ''),
@@ -1461,8 +1658,7 @@ def import_consultant_data(conn, consultant_id, payload):
             cert.get('expiration_date', None),
             cert.get('credential_id', ''),
             cert.get('credential_url', ''),
-            cert.get('description', ''),
-            cert.get('display_order', 0)
+            cert.get('description', '')
         ))
 
 
@@ -1585,7 +1781,9 @@ def parse_cv():
     if request.method == 'POST':
         cv_file = request.files.get('cv_file')
         consultant_name = request.form.get('consultant_name', '').strip()
-        ai_provider = request.form.get('ai_provider', 'gemini')
+        ai_provider = (request.form.get('ai_provider') or 'gemini').strip().lower()
+        if ai_provider not in {'gemini', 'groq', 'ollama'}:
+            ai_provider = 'gemini'
         
         if not cv_file:
             flash(get_translation('messages.cv_file_required'), 'error')
@@ -1620,7 +1818,11 @@ def parse_cv():
         
         return redirect(url_for('review_parsed_cv'))
     
-    return render_template('parse_cv.html', has_groq=bool(GROQ_API_KEY))
+    return render_template(
+        'parse_cv.html',
+        has_groq=bool(GROQ_API_KEY and groq_client is not None),
+        has_ollama=bool(OLLAMA_ENABLED)
+    )
 
 
 @app.route('/consultants/review-parsed-cv')
@@ -1687,6 +1889,9 @@ def assignment_match():
         all_consultants = conn.execute(
             'SELECT id, display_name FROM consultants ORDER BY display_name, id'
         ).fetchall()
+        current_consultant_id = resolve_current_consultant_id(conn)
+        if current_consultant_id is not None:
+            selected_consultant_ids = [current_consultant_id]
     else:
         if current_user.consultant_id:
             selected_consultant_ids = [current_user.consultant_id]
@@ -1700,6 +1905,8 @@ def assignment_match():
     if request.method == 'POST':
         assignment_description = (request.form.get('assignment_description') or '').strip()
         ai_provider = (request.form.get('ai_provider') or 'gemini').strip().lower()
+        if ai_provider not in {'gemini', 'groq', 'ollama'}:
+            ai_provider = 'gemini'
 
         if not assignment_description:
             conn.close()
@@ -1799,7 +2006,8 @@ def assignment_match():
         match_notes=match_notes,
         match_result_parse_error=match_result_parse_error,
         consultants_json_input=consultants_json_input,
-        has_groq=bool(GROQ_API_KEY)
+        has_groq=bool(GROQ_API_KEY and groq_client is not None),
+        has_ollama=bool(OLLAMA_ENABLED)
     )
 
 
@@ -1993,7 +2201,24 @@ def view_work_experience():
     conn = get_db_connection()
     consultant_id = resolve_current_consultant_id(conn)
     experiences_raw = conn.execute(
-        'SELECT * FROM work_experience WHERE consultant_id = ? ORDER BY display_order, start_date DESC',
+        '''
+        SELECT * FROM work_experience
+        WHERE consultant_id = ?
+        ORDER BY
+            CASE
+                WHEN is_current = 1 OR end_date IS NULL OR end_date = '' THEN 0
+                ELSE 1
+            END,
+            CASE
+                WHEN is_current = 1 OR end_date IS NULL OR end_date = '' THEN start_date
+                ELSE NULL
+            END DESC,
+            CASE
+                WHEN is_current = 1 OR end_date IS NULL OR end_date = '' THEN NULL
+                ELSE end_date
+            END DESC,
+            start_date DESC
+        ''',
         (consultant_id,)
     ).fetchall()
     
@@ -2027,8 +2252,8 @@ def add_work_experience():
             INSERT INTO work_experience (
                 consultant_id, company_name, position_title, location, start_date, end_date,
                 is_current, description, achievements, star_situation, star_tasks, 
-                star_actions, star_results, display_order
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                star_actions, star_results
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (
             consultant_id,
             request.form['company_name'],
@@ -2042,14 +2267,13 @@ def add_work_experience():
             request.form.get('star_situation', ''),
             request.form.get('star_tasks', ''),
             request.form.get('star_actions', ''),
-            request.form.get('star_results', ''),
-            request.form.get('display_order', 0)
+            request.form.get('star_results', '')
         ))
         
         experience_id = cursor.lastrowid
         
         # Handle linked skills
-        skill_ids = request.form.getlist('skill_ids')
+        skill_ids = filter_skill_ids_for_consultant(conn, consultant_id, request.form.getlist('skill_ids'))
         for skill_id in skill_ids:
             conn.execute(
                 'INSERT INTO experience_skills (experience_id, skill_id) VALUES (?, ?)',
@@ -2078,36 +2302,72 @@ def edit_work_experience(id):
     """Edit existing work experience."""
     conn = get_db_connection()
     consultant_id = resolve_current_consultant_id(conn)
+    experience = get_editable_record(
+        conn,
+        'work_experience',
+        id,
+        consultant_id,
+        'messages.record_not_found'
+    )
+
+    if not experience:
+        conn.close()
+        return redirect(url_for('view_work_experience'))
+
+    target_consultant_id = experience['consultant_id']
     
     if request.method == 'POST':
-        conn.execute('''
-            UPDATE work_experience SET
-                company_name = ?, position_title = ?, location = ?, start_date = ?,
-                end_date = ?, is_current = ?, description = ?, achievements = ?,
-                star_situation = ?, star_tasks = ?, star_actions = ?, star_results = ?,
-                display_order = ?, updated_at = CURRENT_TIMESTAMP
-            WHERE id = ? AND consultant_id = ?
-        ''', (
-            request.form['company_name'],
-            request.form['position_title'],
-            request.form.get('location', ''),
-            request.form['start_date'],
-            request.form.get('end_date', None) if not request.form.get('is_current') else None,
-            1 if request.form.get('is_current') else 0,
-            request.form.get('description', ''),
-            request.form.get('achievements', ''),
-            request.form.get('star_situation', ''),
-            request.form.get('star_tasks', ''),
-            request.form.get('star_actions', ''),
-            request.form.get('star_results', ''),
-            request.form.get('display_order', 0),
-            id,
-            consultant_id
-        ))
+        if current_user.is_admin():
+            conn.execute('''
+                UPDATE work_experience SET
+                    company_name = ?, position_title = ?, location = ?, start_date = ?,
+                    end_date = ?, is_current = ?, description = ?, achievements = ?,
+                    star_situation = ?, star_tasks = ?, star_actions = ?, star_results = ?,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+            ''', (
+                request.form['company_name'],
+                request.form['position_title'],
+                request.form.get('location', ''),
+                request.form['start_date'],
+                request.form.get('end_date', None) if not request.form.get('is_current') else None,
+                1 if request.form.get('is_current') else 0,
+                request.form.get('description', ''),
+                request.form.get('achievements', ''),
+                request.form.get('star_situation', ''),
+                request.form.get('star_tasks', ''),
+                request.form.get('star_actions', ''),
+                request.form.get('star_results', ''),
+                id
+            ))
+        else:
+            conn.execute('''
+                UPDATE work_experience SET
+                    company_name = ?, position_title = ?, location = ?, start_date = ?,
+                    end_date = ?, is_current = ?, description = ?, achievements = ?,
+                    star_situation = ?, star_tasks = ?, star_actions = ?, star_results = ?,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = ? AND consultant_id = ?
+            ''', (
+                request.form['company_name'],
+                request.form['position_title'],
+                request.form.get('location', ''),
+                request.form['start_date'],
+                request.form.get('end_date', None) if not request.form.get('is_current') else None,
+                1 if request.form.get('is_current') else 0,
+                request.form.get('description', ''),
+                request.form.get('achievements', ''),
+                request.form.get('star_situation', ''),
+                request.form.get('star_tasks', ''),
+                request.form.get('star_actions', ''),
+                request.form.get('star_results', ''),
+                id,
+                consultant_id
+            ))
         
         # Update linked skills
         conn.execute('DELETE FROM experience_skills WHERE experience_id = ?', (id,))
-        skill_ids = request.form.getlist('skill_ids')
+        skill_ids = filter_skill_ids_for_consultant(conn, target_consultant_id, request.form.getlist('skill_ids'))
         for skill_id in skill_ids:
             conn.execute(
                 'INSERT INTO experience_skills (experience_id, skill_id) VALUES (?, ?)',
@@ -2118,24 +2378,14 @@ def edit_work_experience(id):
         conn.close()
         flash(get_translation('messages.work_experience_updated'), 'success')
         return redirect(url_for('view_work_experience'))
-    
-    experience = conn.execute(
-        'SELECT * FROM work_experience WHERE id = ? AND consultant_id = ?',
-        (id, consultant_id)
-    ).fetchone()
-    
-    if not experience:
-        conn.close()
-        flash(get_translation('messages.work_experience_not_found'), 'error')
-        return redirect(url_for('view_work_experience'))
-        
+
     all_skills = conn.execute('''
         SELECT s.id, s.skill_name, c.name as category_name
         FROM skills s
         LEFT JOIN skill_categories c ON s.category_id = c.id
         WHERE s.consultant_id = ?
         ORDER BY c.name, s.skill_name
-    ''', (consultant_id,)).fetchall()
+    ''', (target_consultant_id,)).fetchall()
     
     current_skill_ids = [row['skill_id'] for row in conn.execute(
         'SELECT skill_id FROM experience_skills WHERE experience_id = ?',
@@ -2155,10 +2405,18 @@ def delete_work_experience(id):
     """Delete work experience."""
     conn = get_db_connection()
     consultant_id = resolve_current_consultant_id(conn)
-    conn.execute(
-        'DELETE FROM work_experience WHERE id = ? AND consultant_id = ?',
-        (id, consultant_id)
-    )
+    experience = get_editable_record(conn, 'work_experience', id, consultant_id, 'messages.record_not_found')
+    if not experience:
+        conn.close()
+        return redirect(url_for('view_work_experience'))
+
+    if current_user.is_admin():
+        conn.execute('DELETE FROM work_experience WHERE id = ?', (id,))
+    else:
+        conn.execute(
+            'DELETE FROM work_experience WHERE id = ? AND consultant_id = ?',
+            (id, consultant_id)
+        )
     conn.commit()
     conn.close()
     flash(get_translation('messages.work_experience_deleted'), 'success')
@@ -2174,7 +2432,7 @@ def view_education():
     conn = get_db_connection()
     consultant_id = resolve_current_consultant_id(conn)
     education = conn.execute(
-        'SELECT * FROM education WHERE consultant_id = ? ORDER BY display_order, end_date DESC',
+        'SELECT * FROM education WHERE consultant_id = ? ORDER BY start_date IS NULL, start_date DESC',
         (consultant_id,)
     ).fetchall()
     conn.close()
@@ -2192,8 +2450,8 @@ def add_education():
         conn.execute('''
             INSERT INTO education (
                 consultant_id, institution_name, degree, field_of_study, location, start_date,
-                end_date, gpa, honors, description, display_order
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                end_date, gpa, honors, description
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (
             consultant_id,
             request.form['institution_name'],
@@ -2204,8 +2462,7 @@ def add_education():
             request.form.get('end_date', None),
             request.form.get('gpa', ''),
             request.form.get('honors', ''),
-            request.form.get('description', ''),
-            request.form.get('display_order', 0)
+            request.form.get('description', '')
         ))
         
         conn.commit()
@@ -2222,38 +2479,57 @@ def edit_education(id):
     """Edit existing education entry."""
     conn = get_db_connection()
     consultant_id = resolve_current_consultant_id(conn)
+    education = get_editable_record(conn, 'education', id, consultant_id, 'messages.record_not_found')
+    if not education:
+        conn.close()
+        return redirect(url_for('view_education'))
     
     if request.method == 'POST':
-        conn.execute('''
-            UPDATE education SET
-                institution_name = ?, degree = ?, field_of_study = ?, location = ?,
-                start_date = ?, end_date = ?, gpa = ?, honors = ?, description = ?,
-                display_order = ?, updated_at = CURRENT_TIMESTAMP
-            WHERE id = ? AND consultant_id = ?
-        ''', (
-            request.form['institution_name'],
-            request.form['degree'],
-            request.form.get('field_of_study', ''),
-            request.form.get('location', ''),
-            request.form.get('start_date', None),
-            request.form.get('end_date', None),
-            request.form.get('gpa', ''),
-            request.form.get('honors', ''),
-            request.form.get('description', ''),
-            request.form.get('display_order', 0),
-            id,
-            consultant_id
-        ))
+        if current_user.is_admin():
+            conn.execute('''
+                UPDATE education SET
+                    institution_name = ?, degree = ?, field_of_study = ?, location = ?,
+                    start_date = ?, end_date = ?, gpa = ?, honors = ?, description = ?,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+            ''', (
+                request.form['institution_name'],
+                request.form['degree'],
+                request.form.get('field_of_study', ''),
+                request.form.get('location', ''),
+                request.form.get('start_date', None),
+                request.form.get('end_date', None),
+                request.form.get('gpa', ''),
+                request.form.get('honors', ''),
+                request.form.get('description', ''),
+                id
+            ))
+        else:
+            conn.execute('''
+                UPDATE education SET
+                    institution_name = ?, degree = ?, field_of_study = ?, location = ?,
+                    start_date = ?, end_date = ?, gpa = ?, honors = ?, description = ?,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = ? AND consultant_id = ?
+            ''', (
+                request.form['institution_name'],
+                request.form['degree'],
+                request.form.get('field_of_study', ''),
+                request.form.get('location', ''),
+                request.form.get('start_date', None),
+                request.form.get('end_date', None),
+                request.form.get('gpa', ''),
+                request.form.get('honors', ''),
+                request.form.get('description', ''),
+                id,
+                consultant_id
+            ))
         
         conn.commit()
         conn.close()
         flash(get_translation('messages.education_updated'), 'success')
         return redirect(url_for('view_education'))
     
-    education = conn.execute(
-        'SELECT * FROM education WHERE id = ? AND consultant_id = ?',
-        (id, consultant_id)
-    ).fetchone()
     conn.close()
     return render_template('edit_education.html', education=education)
 
@@ -2264,10 +2540,18 @@ def delete_education(id):
     """Delete education entry."""
     conn = get_db_connection()
     consultant_id = resolve_current_consultant_id(conn)
-    conn.execute(
-        'DELETE FROM education WHERE id = ? AND consultant_id = ?',
-        (id, consultant_id)
-    )
+    education = get_editable_record(conn, 'education', id, consultant_id, 'messages.record_not_found')
+    if not education:
+        conn.close()
+        return redirect(url_for('view_education'))
+
+    if current_user.is_admin():
+        conn.execute('DELETE FROM education WHERE id = ?', (id,))
+    else:
+        conn.execute(
+            'DELETE FROM education WHERE id = ? AND consultant_id = ?',
+            (id, consultant_id)
+        )
     conn.commit()
     conn.close()
     flash(get_translation('messages.education_deleted'), 'success')
@@ -2326,29 +2610,41 @@ def edit_skill(id):
     """Edit existing skill."""
     conn = get_db_connection()
     consultant_id = resolve_current_consultant_id(conn)
+    skill = get_editable_record(conn, 'skills', id, consultant_id, 'messages.record_not_found')
+    if not skill:
+        conn.close()
+        return redirect(url_for('view_skills'))
     
     if request.method == 'POST':
-        conn.execute('''
-            UPDATE skills SET
-                skill_name = ?, category_id = ?,
-                updated_at = CURRENT_TIMESTAMP
-            WHERE id = ? AND consultant_id = ?
-        ''', (
-            request.form['skill_name'],
-            request.form.get('category_id'),
-            id,
-            consultant_id
-        ))
+        if current_user.is_admin():
+            conn.execute('''
+                UPDATE skills SET
+                    skill_name = ?, category_id = ?,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+            ''', (
+                request.form['skill_name'],
+                request.form.get('category_id'),
+                id
+            ))
+        else:
+            conn.execute('''
+                UPDATE skills SET
+                    skill_name = ?, category_id = ?,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = ? AND consultant_id = ?
+            ''', (
+                request.form['skill_name'],
+                request.form.get('category_id'),
+                id,
+                consultant_id
+            ))
         
         conn.commit()
         conn.close()
         flash(get_translation('messages.skill_updated'), 'success')
         return redirect(url_for('view_skills'))
     
-    skill = conn.execute(
-        'SELECT * FROM skills WHERE id = ? AND consultant_id = ?',
-        (id, consultant_id)
-    ).fetchone()
     categories = get_skill_categories()
     conn.close()
     return render_template('edit_skill.html', skill=skill, categories=categories)
@@ -2360,10 +2656,18 @@ def delete_skill(id):
     """Delete skill."""
     conn = get_db_connection()
     consultant_id = resolve_current_consultant_id(conn)
-    conn.execute(
-        'DELETE FROM skills WHERE id = ? AND consultant_id = ?',
-        (id, consultant_id)
-    )
+    skill = get_editable_record(conn, 'skills', id, consultant_id, 'messages.record_not_found')
+    if not skill:
+        conn.close()
+        return redirect(url_for('view_skills'))
+
+    if current_user.is_admin():
+        conn.execute('DELETE FROM skills WHERE id = ?', (id,))
+    else:
+        conn.execute(
+            'DELETE FROM skills WHERE id = ? AND consultant_id = ?',
+            (id, consultant_id)
+        )
     conn.commit()
     conn.close()
     flash(get_translation('messages.skill_deleted'), 'success')
@@ -2379,7 +2683,24 @@ def view_projects():
     conn = get_db_connection()
     consultant_id = resolve_current_consultant_id(conn)
     projects_raw = conn.execute(
-        'SELECT * FROM projects WHERE consultant_id = ? ORDER BY display_order, start_date DESC',
+        '''
+        SELECT * FROM projects
+        WHERE consultant_id = ?
+        ORDER BY
+            CASE
+                WHEN end_date IS NULL OR end_date = '' THEN 0
+                ELSE 1
+            END,
+            CASE
+                WHEN end_date IS NULL OR end_date = '' THEN start_date
+                ELSE NULL
+            END DESC,
+            CASE
+                WHEN end_date IS NULL OR end_date = '' THEN NULL
+                ELSE end_date
+            END DESC,
+            start_date DESC
+        ''',
         (consultant_id,)
     ).fetchall()
     
@@ -2412,8 +2733,8 @@ def add_project():
         cursor = conn.execute('''
             INSERT INTO projects (
                 consultant_id, project_name, description, start_date, end_date,
-                project_url, github_url, role, achievements, display_order
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                project_url, github_url, role, achievements
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (
             consultant_id,
             request.form['project_name'],
@@ -2423,14 +2744,13 @@ def add_project():
             request.form.get('project_url', ''),
             request.form.get('github_url', ''),
             request.form.get('role', ''),
-            request.form.get('achievements', ''),
-            request.form.get('display_order', 0)
+            request.form.get('achievements', '')
         ))
         
         project_id = cursor.lastrowid
         
         # Handle linked skills
-        skill_ids = request.form.getlist('skill_ids')
+        skill_ids = filter_skill_ids_for_consultant(conn, consultant_id, request.form.getlist('skill_ids'))
         for skill_id in skill_ids:
             conn.execute(
                 'INSERT INTO project_skills (project_id, skill_id) VALUES (?, ?)',
@@ -2459,31 +2779,56 @@ def edit_project(id):
     """Edit existing project."""
     conn = get_db_connection()
     consultant_id = resolve_current_consultant_id(conn)
+    project = get_editable_record(conn, 'projects', id, consultant_id, 'messages.record_not_found')
+
+    if not project:
+        conn.close()
+        return redirect(url_for('view_projects'))
+
+    target_consultant_id = project['consultant_id']
     
     if request.method == 'POST':
-        conn.execute('''
-            UPDATE projects SET
-                project_name = ?, description = ?, start_date = ?,
-                end_date = ?, project_url = ?, github_url = ?, role = ?, achievements = ?,
-                display_order = ?, updated_at = CURRENT_TIMESTAMP
-            WHERE id = ? AND consultant_id = ?
-        ''', (
-            request.form['project_name'],
-            request.form.get('description', ''),
-            request.form.get('start_date', None),
-            request.form.get('end_date', None),
-            request.form.get('project_url', ''),
-            request.form.get('github_url', ''),
-            request.form.get('role', ''),
-            request.form.get('achievements', ''),
-            request.form.get('display_order', 0),
-            id,
-            consultant_id
-        ))
+        if current_user.is_admin():
+            conn.execute('''
+                UPDATE projects SET
+                    project_name = ?, description = ?, start_date = ?,
+                    end_date = ?, project_url = ?, github_url = ?, role = ?, achievements = ?,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+            ''', (
+                request.form['project_name'],
+                request.form.get('description', ''),
+                request.form.get('start_date', None),
+                request.form.get('end_date', None),
+                request.form.get('project_url', ''),
+                request.form.get('github_url', ''),
+                request.form.get('role', ''),
+                request.form.get('achievements', ''),
+                id
+            ))
+        else:
+            conn.execute('''
+                UPDATE projects SET
+                    project_name = ?, description = ?, start_date = ?,
+                    end_date = ?, project_url = ?, github_url = ?, role = ?, achievements = ?,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = ? AND consultant_id = ?
+            ''', (
+                request.form['project_name'],
+                request.form.get('description', ''),
+                request.form.get('start_date', None),
+                request.form.get('end_date', None),
+                request.form.get('project_url', ''),
+                request.form.get('github_url', ''),
+                request.form.get('role', ''),
+                request.form.get('achievements', ''),
+                id,
+                consultant_id
+            ))
         
         # Update linked skills
         conn.execute('DELETE FROM project_skills WHERE project_id = ?', (id,))
-        skill_ids = request.form.getlist('skill_ids')
+        skill_ids = filter_skill_ids_for_consultant(conn, target_consultant_id, request.form.getlist('skill_ids'))
         for skill_id in skill_ids:
             conn.execute(
                 'INSERT INTO project_skills (project_id, skill_id) VALUES (?, ?)',
@@ -2495,23 +2840,13 @@ def edit_project(id):
         flash(get_translation('messages.project_updated'), 'success')
         return redirect(url_for('view_projects'))
     
-    project = conn.execute(
-        'SELECT * FROM projects WHERE id = ? AND consultant_id = ?',
-        (id, consultant_id)
-    ).fetchone()
-    
-    if not project:
-        conn.close()
-        flash(get_translation('messages.project_not_found'), 'error')
-        return redirect(url_for('view_projects'))
-        
     all_skills = conn.execute('''
         SELECT s.id, s.skill_name, c.name as category_name
         FROM skills s
         LEFT JOIN skill_categories c ON s.category_id = c.id
         WHERE s.consultant_id = ?
         ORDER BY c.name, s.skill_name
-    ''', (consultant_id,)).fetchall()
+    ''', (target_consultant_id,)).fetchall()
     
     current_skill_ids = [row['skill_id'] for row in conn.execute(
         'SELECT skill_id FROM project_skills WHERE project_id = ?',
@@ -2531,10 +2866,18 @@ def delete_project(id):
     """Delete project."""
     conn = get_db_connection()
     consultant_id = resolve_current_consultant_id(conn)
-    conn.execute(
-        'DELETE FROM projects WHERE id = ? AND consultant_id = ?',
-        (id, consultant_id)
-    )
+    project = get_editable_record(conn, 'projects', id, consultant_id, 'messages.record_not_found')
+    if not project:
+        conn.close()
+        return redirect(url_for('view_projects'))
+
+    if current_user.is_admin():
+        conn.execute('DELETE FROM projects WHERE id = ?', (id,))
+    else:
+        conn.execute(
+            'DELETE FROM projects WHERE id = ? AND consultant_id = ?',
+            (id, consultant_id)
+        )
     conn.commit()
     conn.close()
     flash(get_translation('messages.project_deleted'), 'success')
@@ -2550,7 +2893,7 @@ def view_certifications():
     conn = get_db_connection()
     consultant_id = resolve_current_consultant_id(conn)
     certifications_raw = conn.execute(
-        'SELECT * FROM certifications WHERE consultant_id = ? ORDER BY display_order, issue_date DESC',
+        'SELECT * FROM certifications WHERE consultant_id = ? ORDER BY issue_date IS NULL, issue_date DESC',
         (consultant_id,)
     ).fetchall()
     conn.close()
@@ -2579,8 +2922,8 @@ def add_certification():
         conn.execute('''
             INSERT INTO certifications (
                 consultant_id, certification_name, issuing_organization, issue_date, expiration_date,
-                credential_id, credential_url, description, display_order
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                credential_id, credential_url, description
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         ''', (
             consultant_id,
             request.form['certification_name'],
@@ -2589,8 +2932,7 @@ def add_certification():
             request.form.get('expiration_date', None),
             request.form.get('credential_id', ''),
             request.form.get('credential_url', ''),
-            request.form.get('description', ''),
-            request.form.get('display_order', 0)
+            request.form.get('description', '')
         ))
         
         conn.commit()
@@ -2607,36 +2949,53 @@ def edit_certification(id):
     """Edit existing certification."""
     conn = get_db_connection()
     consultant_id = resolve_current_consultant_id(conn)
+    certification = get_editable_record(conn, 'certifications', id, consultant_id, 'messages.record_not_found')
+    if not certification:
+        conn.close()
+        return redirect(url_for('view_certifications'))
     
     if request.method == 'POST':
-        conn.execute('''
-            UPDATE certifications SET
-                certification_name = ?, issuing_organization = ?, issue_date = ?,
-                expiration_date = ?, credential_id = ?, credential_url = ?, description = ?,
-                display_order = ?, updated_at = CURRENT_TIMESTAMP
-            WHERE id = ? AND consultant_id = ?
-        ''', (
-            request.form['certification_name'],
-            request.form['issuing_organization'],
-            request.form.get('issue_date', None),
-            request.form.get('expiration_date', None),
-            request.form.get('credential_id', ''),
-            request.form.get('credential_url', ''),
-            request.form.get('description', ''),
-            request.form.get('display_order', 0),
-            id,
-            consultant_id
-        ))
+        if current_user.is_admin():
+            conn.execute('''
+                UPDATE certifications SET
+                    certification_name = ?, issuing_organization = ?, issue_date = ?,
+                    expiration_date = ?, credential_id = ?, credential_url = ?, description = ?,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+            ''', (
+                request.form['certification_name'],
+                request.form['issuing_organization'],
+                request.form.get('issue_date', None),
+                request.form.get('expiration_date', None),
+                request.form.get('credential_id', ''),
+                request.form.get('credential_url', ''),
+                request.form.get('description', ''),
+                id
+            ))
+        else:
+            conn.execute('''
+                UPDATE certifications SET
+                    certification_name = ?, issuing_organization = ?, issue_date = ?,
+                    expiration_date = ?, credential_id = ?, credential_url = ?, description = ?,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = ? AND consultant_id = ?
+            ''', (
+                request.form['certification_name'],
+                request.form['issuing_organization'],
+                request.form.get('issue_date', None),
+                request.form.get('expiration_date', None),
+                request.form.get('credential_id', ''),
+                request.form.get('credential_url', ''),
+                request.form.get('description', ''),
+                id,
+                consultant_id
+            ))
         
         conn.commit()
         conn.close()
         flash(get_translation('messages.certification_updated'), 'success')
         return redirect(url_for('view_certifications'))
     
-    certification = conn.execute(
-        'SELECT * FROM certifications WHERE id = ? AND consultant_id = ?',
-        (id, consultant_id)
-    ).fetchone()
     conn.close()
     return render_template('edit_certification.html', certification=certification)
 
@@ -2647,10 +3006,18 @@ def delete_certification(id):
     """Delete certification."""
     conn = get_db_connection()
     consultant_id = resolve_current_consultant_id(conn)
-    conn.execute(
-        'DELETE FROM certifications WHERE id = ? AND consultant_id = ?',
-        (id, consultant_id)
-    )
+    certification = get_editable_record(conn, 'certifications', id, consultant_id, 'messages.record_not_found')
+    if not certification:
+        conn.close()
+        return redirect(url_for('view_certifications'))
+
+    if current_user.is_admin():
+        conn.execute('DELETE FROM certifications WHERE id = ?', (id,))
+    else:
+        conn.execute(
+            'DELETE FROM certifications WHERE id = ? AND consultant_id = ?',
+            (id, consultant_id)
+        )
     conn.commit()
     conn.close()
     flash(get_translation('messages.certification_deleted'), 'success')
@@ -2940,7 +3307,24 @@ def get_cv_data(conn, consultant_id):
     
     # Work Experience
     work_experience_rows = conn.execute(
-        'SELECT * FROM work_experience WHERE consultant_id = ? ORDER BY display_order, start_date DESC',
+        '''
+        SELECT * FROM work_experience
+        WHERE consultant_id = ?
+        ORDER BY
+            CASE
+                WHEN is_current = 1 OR end_date IS NULL OR end_date = '' THEN 0
+                ELSE 1
+            END,
+            CASE
+                WHEN is_current = 1 OR end_date IS NULL OR end_date = '' THEN start_date
+                ELSE NULL
+            END DESC,
+            CASE
+                WHEN is_current = 1 OR end_date IS NULL OR end_date = '' THEN NULL
+                ELSE end_date
+            END DESC,
+            start_date DESC
+        ''',
         (consultant_id,)
     ).fetchall()
 
@@ -2959,13 +3343,13 @@ def get_cv_data(conn, consultant_id):
     
     # Education
     education = conn.execute(
-        'SELECT * FROM education WHERE consultant_id = ? ORDER BY display_order, start_date DESC',
+        'SELECT * FROM education WHERE consultant_id = ? ORDER BY start_date IS NULL, start_date DESC',
         (consultant_id,)
     ).fetchall()
     
     # Certifications
     certifications_raw = conn.execute(
-        'SELECT * FROM certifications WHERE consultant_id = ? ORDER BY display_order, issue_date DESC',
+        'SELECT * FROM certifications WHERE consultant_id = ? ORDER BY issue_date IS NULL, issue_date DESC',
         (consultant_id,)
     ).fetchall()
     
@@ -2997,7 +3381,24 @@ def get_cv_data(conn, consultant_id):
     
     # Projects
     project_rows = conn.execute(
-        'SELECT * FROM projects WHERE consultant_id = ? ORDER BY display_order, start_date DESC',
+        '''
+        SELECT * FROM projects
+        WHERE consultant_id = ?
+        ORDER BY
+            CASE
+                WHEN end_date IS NULL OR end_date = '' THEN 0
+                ELSE 1
+            END,
+            CASE
+                WHEN end_date IS NULL OR end_date = '' THEN start_date
+                ELSE NULL
+            END DESC,
+            CASE
+                WHEN end_date IS NULL OR end_date = '' THEN NULL
+                ELSE end_date
+            END DESC,
+            start_date DESC
+        ''',
         (consultant_id,)
     ).fetchall()
 

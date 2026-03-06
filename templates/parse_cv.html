@@ -37,6 +37,7 @@
                 <select id="ai_provider" name="ai_provider">
                     <option value="gemini">Google Gemini</option>
                     <option value="groq" {% if not has_groq %}disabled{% endif %}>Groq (Llama 3.3 70B)</option>
+                    <option value="ollama" {% if not has_ollama %}disabled{% endif %}>Ollama (orca2)</option>
                 </select>
                 <small class="form-hint">{{ t.cv_parsing.ai_model_hint }}</small>
             </div>

@@ -161,11 +161,11 @@
         }
         
         ul {
-            margin-left: 1em;
             margin-top: 0.3em;
         }
         
         li {
+            margin-left: 1.5em;
             margin-bottom: 0.3em;
         }
         
@@ -195,11 +195,9 @@
             {% if personal_info.phone %}<p>{{ personal_info.phone }}</p>{% endif %}
             {% if personal_info.address or personal_info.city or personal_info.country %}
             <p>
-                {% if personal_info.address %}{{ personal_info.address }}{% endif %}
-                {% if personal_info.city %}{% if personal_info.address %}, {% endif %}{{ personal_info.city }}{% endif %}
-                {% if personal_info.state %}, {{ personal_info.state }}{% endif %}
+                {% if personal_info.address %}{{ personal_info.address }}{% endif %}{% if personal_info.city %}{% if personal_info.address %}, {% endif %}
                 {% if personal_info.zip_code %} {{ personal_info.zip_code }}{% endif %}
-                {% if personal_info.country %}{% if personal_info.city or personal_info.address %}, {% endif %}{{ personal_info.country }}{% endif %}
+                {{ personal_info.city }}{% endif %}{% if personal_info.state %} ({{ personal_info.state }}){% endif %}{% if personal_info.country %}{% if personal_info.city or personal_info.address %}, {% endif %}{{ personal_info.country }}{% endif %}
             </p>
             {% endif %}
             {% if personal_info.linkedin_url or personal_info.github_url or personal_info.portfolio_url %}
@@ -231,12 +229,11 @@
                 <h3 class="entry-title">
                     {{ edu.degree }}{% if edu.field_of_study %} - {{ edu.field_of_study }}{% endif %}
                     <span class="entry-date">
-                        {% if edu.start_date %}{{ edu.start_date }} - {% endif %}{{ edu.end_date or t.education.in_progress }}
+                        {% if edu.start_date %}&nbsp;({{ edu.start_date }} - {% endif %}{{ edu.end_date or t.education.in_progress }}{% if edu.start_date %}){% endif %}
                     </span>
                 </h3>
                 <div class="entry-subtitle">
-                    {{ edu.institution_name }}
-                    {% if edu.location %}<span class="entry-location">, {{ edu.location }}</span>{% endif %}
+                    {{ edu.institution_name }}{% if edu.location %}, {{ edu.location }}{% endif %}
                 </div>
             </div>
             {% if edu.gpa or edu.honors %}
@@ -288,12 +285,9 @@
             <div class="entry-header">
                 <h3 class="entry-title">{{ exp.company_name }} | {{ exp.position_title }}
                     <span class="entry-date">
-                        {{ exp.start_date }} - {% if exp.is_current %}{{ t.work_experience.present }}{% else %}{{ exp.end_date or t.common.na }}{% endif %}
+                        &nbsp;({{ exp.start_date }} - {% if exp.is_current %}{{ t.work_experience.present }}{% else %}{{ exp.end_date or t.common.na }}{% endif %})
                     </span>
                 </h3>
-                <div>
-                    {% if exp.location %}<span class="entry-location">{{ exp.location }}</span> | {% endif %}
-                </div>
             </div>
             {% if exp.description %}
             <div class="description">{{ exp.description|format_markdown|safe }}</div>
@@ -315,7 +309,7 @@
             {% if exp.skills %}
             <div class="description">
                 <strong>{{ t.skills.title }}:</strong>
-                {{ exp.skills|join(', ') }}
+                <div>{{ exp.skills|join(', ') }}</div>
             </div>
             {% endif %}
         </div>
@@ -345,13 +339,15 @@
     <div class="section">
         <h2>{{ t.projects.title }}</h2>
         {% for project in projects %}
-        <div class="entry">
+        <div class="entry experience-section">
             <div class="entry-header">
-                <h3 class="entry-title">{{ project.project_name }}</h3>
+                <h3 class="entry-title">
+                    {{ project.project_name }}
+                    <span class="entry-date">
+                        &nbsp;({% if project.start_date %}{{ project.start_date }} - {% endif %}{{ project.end_date or t.projects.ongoing }}{% if project.start_date %}){% endif %}
+                    </span>
+                </h3>
                 {% if project.role %}<div class="entry-subtitle">{{ project.role }}</div>{% endif %}
-                <div class="entry-date">
-                    {% if project.start_date %}{{ project.start_date }} - {% endif %}{{ project.end_date or t.projects.ongoing }}
-                </div>
             </div>
             {% if project.description %}
             <div class="description">{{ project.description|format_markdown|safe }}</div>

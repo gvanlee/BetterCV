@@ -36,6 +36,9 @@
                             {% if has_groq %}
                             <option value="groq" {% if ai_provider == 'groq' %}selected{% endif %}>Groq</option>
                             {% endif %}
+                            {% if has_ollama %}
+                            <option value="ollama" {% if ai_provider == 'ollama' %}selected{% endif %}>Ollama (orca2)</option>
+                            {% endif %}
                         </select>
                     </div>
                 </div>
@@ -45,6 +48,12 @@
                     <div class="form-group">
                         <label>{{ t.assignment_match.consultants_label }} *</label>
                         {% if all_consultants %}
+                        <div class="consultant-controls">
+                            <label class="consultant-select-all" for="select_all_consultants">
+                                <input type="checkbox" id="select_all_consultants">
+                                <span>{{ t.assignment_match.select_all_consultants }}</span>
+                            </label>
+                        </div>
                         <div class="consultant-checklist">
                             {% for consultant in all_consultants %}
                             <label class="consultant-item">
@@ -209,6 +218,23 @@
     margin-top: 0.5rem;
 }
 
+.consultant-controls {
+    margin-top: 0.5rem;
+}
+
+.consultant-select-all {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    cursor: pointer;
+    font-weight: 500;
+}
+
+.consultant-select-all input[type="checkbox"] {
+    width: auto;
+    cursor: pointer;
+}
+
 .consultant-item {
     display: flex;
     align-items: center;
@@ -310,11 +336,35 @@
 </style>
 
 <script>
-    document.getElementById('matchForm').addEventListener('submit', function(e) {
-        // Show loading overlay
-        document.getElementById('loadingOverlay').classList.add('active');
-        // Disable submit button to prevent double submission
-        document.getElementById('submitBtn').disabled = true;
-    });
+    const matchForm = document.getElementById('matchForm');
+    if (matchForm) {
+        matchForm.addEventListener('submit', function() {
+            document.getElementById('loadingOverlay').classList.add('active');
+            document.getElementById('submitBtn').disabled = true;
+        });
+    }
+
+    const selectAllConsultants = document.getElementById('select_all_consultants');
+    const consultantCheckboxes = Array.from(document.querySelectorAll('input[name="consultant_ids"]'));
+
+    if (selectAllConsultants && consultantCheckboxes.length > 0) {
+        const syncSelectAllState = () => {
+            const checkedCount = consultantCheckboxes.filter((checkbox) => checkbox.checked).length;
+            selectAllConsultants.checked = checkedCount === consultantCheckboxes.length;
+            selectAllConsultants.indeterminate = checkedCount > 0 && checkedCount < consultantCheckboxes.length;
+        };
+
+        selectAllConsultants.addEventListener('change', function() {
+            consultantCheckboxes.forEach((checkbox) => {
+                checkbox.checked = selectAllConsultants.checked;
+            });
+        });
+
+        consultantCheckboxes.forEach((checkbox) => {
+            checkbox.addEventListener('change', syncSelectAllState);
+        });
+
+        syncSelectAllState();
+    }
 </script>
 {% endblock %}

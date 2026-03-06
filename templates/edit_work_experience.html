@@ -120,12 +120,6 @@
             {% endif %}
         </div>
 
-        <div class="form-group">
-            <label for="display_order">{{ t.work_experience.display_order }}</label>
-            <input type="number" id="display_order" name="display_order" 
-                   value="{{ experience['display_order'] if experience else 0 }}" min="0">
-            <small>{{ t.work_experience.display_order_help }}</small>
-        </div>
     </div>
 
     <div class="form-actions">

@@ -106,7 +106,7 @@
         <div class="review-content">
             {% for project in parsed_data.projects[:3] %}
             <div class="review-item">
-                <strong>{{ project.name }}</strong><br>
+                <strong>{{ project.project_name }}</strong><br>
                 <small>{{ project.description | truncate(100) if project.description }}</small>
             </div>
             {% endfor %}
@@ -124,7 +124,7 @@
         <div class="review-content">
             {% for cert in parsed_data.certifications[:3] %}
             <div class="review-item">
-                <strong>{{ cert.name }}</strong><br>
+                <strong>{{ cert.certification_name }}</strong><br>
                 <small>{{ cert.issuing_organization }}</small>
             </div>
             {% endfor %}
