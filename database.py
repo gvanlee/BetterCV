@@ -84,6 +84,7 @@ def init_database():
             consultant_id INTEGER,
             first_name TEXT NOT NULL,
             last_name TEXT NOT NULL,
+            initials TEXT,
             email TEXT NOT NULL,
             phone TEXT,
             address TEXT,
@@ -309,6 +310,8 @@ def init_database():
         'certifications'
     ]:
         ensure_column(table, 'consultant_id', 'INTEGER')
+
+    ensure_column('personal_info', 'initials', 'TEXT')
 
     for table in [
         'work_experience',

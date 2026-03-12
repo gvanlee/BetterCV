@@ -264,7 +264,16 @@ The database will be persisted in the `./data` directory.
    pip install -r requirements.txt
    ```
 
-2. **For AI features**: Set one or more AI provider settings:
+2. Install native libraries for WeasyPrint (required for PDF export):
+   - Linux (Debian/Ubuntu):
+     ```bash
+     sudo apt-get update
+     sudo apt-get install -y libcairo2 libpango-1.0-0 libpangocairo-1.0-0 libgdk-pixbuf-2.0-0 libffi-dev shared-mime-info
+     ```
+   - Windows/macOS:
+     See the official WeasyPrint installation guide for required system libraries.
+
+3. **For AI features**: Set one or more AI provider settings:
    ```bash
    export GEMINI_API_KEY="your-gemini-api-key-here"
    export GROQ_API_KEY="your-groq-api-key-here"
@@ -273,17 +282,19 @@ The database will be persisted in the `./data` directory.
    export OLLAMA_MODEL="orca2"
    ```
 
-3. Initialize the database:
+4. Initialize the database:
    ```bash
    python init_db.py
    ```
 
-4. Run the application:
+5. Run the application:
    ```bash
    python app.py
    ```
 
-5. Open your browser to: http://localhost:5000
+6. Open your browser to: http://localhost:5000
+
+PDF export note: BetterCV uses WeasyPrint for PDF generation.
 
 ## Docker Commands
 

@@ -56,6 +56,8 @@
     "name": "Naam",
     "first_name": "Voornaam",
     "last_name": "Achternaam",
+    "initials": "Initialen",
+    "initials_placeholder": "bijv. JD",
     "email": "E-mail",
     "phone": "Telefoon",
     "address_section": "Adres",

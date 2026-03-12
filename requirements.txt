@@ -9,4 +9,4 @@ python-docx
 html2docx
 markdown
 python-dotenv
-pdfkit
+weasyprint

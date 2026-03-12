@@ -9,6 +9,7 @@ import os
 import uuid
 import sqlite3
 import hashlib
+import copy
 import secrets
 import smtplib
 from email.message import EmailMessage
@@ -1259,6 +1260,53 @@ def match_assignment_with_ai(assignment_description, consultant_payloads, provid
     return None, consultants_json, f"Unknown AI provider: {provider}"
 
 
+def _derive_initials(name):
+    """Return initials derived from a full name string."""
+    if not name:
+        return ''
+    parts = [part for part in re.split(r'\s+', str(name).strip()) if part]
+    return ''.join(part[0].upper() for part in parts if part and part[0].isalnum())
+
+
+def anonymize_consultant_payload_for_ai(payload):
+    """Return a copy of consultant payload with identifying contact/name data removed."""
+    payload_copy = copy.deepcopy(payload)
+    personal_info = payload_copy.get('personal_info') or {}
+
+    configured_initials = str(personal_info.get('initials', '')).strip().upper()
+    if configured_initials:
+        initials = configured_initials
+    else:
+        initials = ''.join([
+            _derive_initials(personal_info.get('first_name', '')),
+            _derive_initials(personal_info.get('last_name', ''))
+        ])
+        if not initials:
+            initials = _derive_initials(payload_copy.get('consultant', {}).get('display_name', ''))
+
+    if not initials:
+        initials = f"C{payload_copy.get('consultant', {}).get('id', '')}"
+
+    consultant = payload_copy.get('consultant') or {}
+    consultant['display_name'] = initials
+    payload_copy['consultant'] = consultant
+
+    if payload_copy.get('personal_info'):
+        personal_info['initials'] = initials
+        personal_info.pop('first_name', None)
+        personal_info.pop('last_name', None)
+        personal_info.pop('email', None)
+        personal_info.pop('phone', None)
+        personal_info.pop('address', None)
+        personal_info.pop('zip_code', None)
+        personal_info.pop('linkedin_url', None)
+        personal_info.pop('github_url', None)
+        personal_info.pop('portfolio_url', None)
+        payload_copy['personal_info'] = personal_info
+
+    return payload_copy
+
+
 def build_consultant_ai_payload(conn, consultant_id):
     """Build normalized consultant payload for export/matching AI input."""
     consultant = conn.execute(
@@ -1449,14 +1497,15 @@ def import_consultant_data(conn, consultant_id, payload):
     if isinstance(personal_info, dict):
         conn.execute('''
             INSERT INTO personal_info (
-                consultant_id, first_name, last_name, email, phone, address, city,
+                consultant_id, first_name, last_name, initials, email, phone, address, city,
                 state, zip_code, country, linkedin_url, github_url, portfolio_url,
                 professional_summary
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (
             consultant_id,
             personal_info.get('first_name', ''),
             personal_info.get('last_name', ''),
+            personal_info.get('initials', ''),
             personal_info.get('email', ''),
             personal_info.get('phone', ''),
             personal_info.get('address', ''),
@@ -1940,7 +1989,7 @@ def assignment_match():
             payload = build_consultant_ai_payload(conn, consultant_id)
             if not payload:
                 continue
-            consultant_payloads.append(payload)
+            consultant_payloads.append(anonymize_consultant_payload_for_ai(payload))
             selected_consultant_names.append(payload['consultant']['display_name'])
 
         if not consultant_payloads:
@@ -2123,6 +2172,7 @@ def edit_personal_info():
         data = {
             'first_name': request.form['first_name'],
             'last_name': request.form['last_name'],
+            'initials': request.form.get('initials', '').strip().upper(),
             'email': request.form['email'],
             'phone': request.form.get('phone', ''),
             'address': request.form.get('address', ''),
@@ -2146,12 +2196,12 @@ def edit_personal_info():
             # Update existing record
             conn.execute('''
                 UPDATE personal_info SET
-                    first_name = ?, last_name = ?, email = ?, phone = ?,
+                    first_name = ?, last_name = ?, initials = ?, email = ?, phone = ?,
                     address = ?, city = ?, state = ?, zip_code = ?, country = ?,
                     linkedin_url = ?, github_url = ?, portfolio_url = ?,
                     professional_summary = ?, updated_at = CURRENT_TIMESTAMP
                 WHERE id = ? AND consultant_id = ?
-            ''', (data['first_name'], data['last_name'], data['email'], data['phone'],
+            ''', (data['first_name'], data['last_name'], data['initials'], data['email'], data['phone'],
                   data['address'], data['city'], data['state'], data['zip_code'], data['country'],
                   data['linkedin_url'], data['github_url'], data['portfolio_url'],
                   data['professional_summary'], existing['id'], consultant_id))
@@ -2160,12 +2210,12 @@ def edit_personal_info():
             # Insert new record
             conn.execute('''
                 INSERT INTO personal_info (
-                    consultant_id, first_name, last_name, email, phone, address, city, state,
+                    consultant_id, first_name, last_name, initials, email, phone, address, city, state,
                     zip_code, country, linkedin_url, github_url, portfolio_url, professional_summary
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (
                 consultant_id,
-                data['first_name'], data['last_name'], data['email'], data['phone'],
+                data['first_name'], data['last_name'], data['initials'], data['email'], data['phone'],
                 data['address'], data['city'], data['state'], data['zip_code'], data['country'],
                 data['linkedin_url'], data['github_url'], data['portfolio_url'],
                 data['professional_summary']
@@ -3080,30 +3130,30 @@ def export_cv_download():
     
     # Get consultant name for filename
     if cv_data['personal_info']:
-        filename = f"CV_{cv_data['personal_info']['first_name']}_{cv_data['personal_info']['last_name']}"
+        raw_filename = f"CV_{cv_data['personal_info']['first_name']}_{cv_data['personal_info']['last_name']}"
     else:
-        filename = "CV_Export"
+        raw_filename = "CV_Export"
+
+    # Build a header-safe filename to avoid invalid Content-Disposition parsing.
+    filename = ''.join(c if c.isalnum() or c in {'-', '_'} else '_' for c in raw_filename).strip('_') or 'CV_Export'
+
+    def build_download_response(data, mimetype, extension):
+        response = Response(data, mimetype=mimetype)
+        response.headers.set('Content-Disposition', 'attachment', filename=f'{filename}.{extension}')
+        return response
     
     if format_type == 'html':
         html_content = render_template('cv_template.html', **cv_data)
-        return Response(
-            html_content,
-            mimetype='text/html',
-            headers={'Content-Disposition': f'attachment;filename={filename}.html'}
-        )
+        return build_download_response(html_content, 'text/html', 'html')
     
     elif format_type == 'pdf':
         try:
-            import pdfkit
+            from weasyprint import HTML
             html_content = render_template('cv_template.html', **cv_data)
-            pdf = pdfkit.from_string(html_content, False)
-            return Response(
-                pdf,
-                mimetype='application/pdf',
-                headers={'Content-Disposition': f'attachment;filename={filename}.pdf'}
-            )
+            pdf = HTML(string=html_content, base_url=request.url_root).write_pdf()
+            return build_download_response(pdf, 'application/pdf', 'pdf')
         except Exception as e:
-            flash(f'PDF generation failed: {str(e)}. Please install wkhtmltopdf or use HTML export.', 'error')
+            flash(f'PDF generation failed: {str(e)}. Please install WeasyPrint dependencies or use HTML export.', 'error')
             return redirect(url_for('export_cv'))
     
     elif format_type == 'docx':
@@ -3119,10 +3169,10 @@ def export_cv_download():
             html_to_docx(html_content, doc_file=doc_io)
             doc_io.seek(0)
             
-            return Response(
+            return build_download_response(
                 doc_io.getvalue(),
-                mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-                headers={'Content-Disposition': f'attachment;filename={filename}.docx'}
+                'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                'docx'
             )
             
         except ImportError:
@@ -3188,10 +3238,10 @@ def export_cv_download():
                 doc.save(doc_io)
                 doc_io.seek(0)
                 
-                return Response(
+                return build_download_response(
                     doc_io.getvalue(),
-                    mimetype='application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-                    headers={'Content-Disposition': f'attachment;filename={filename}.docx'}
+                    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                    'docx'
                 )
                 
             except Exception as e:
@@ -3286,11 +3336,7 @@ def export_cv_download():
 
         conn.close()
         
-        return Response(
-            json.dumps(payload, indent=2),
-            mimetype='application/json',
-            headers={'Content-Disposition': f'attachment;filename={filename}.json'}
-        )
+        return build_download_response(json.dumps(payload, indent=2), 'application/json', 'json')
     
     flash('Invalid format selected', 'error')
     return redirect(url_for('export_cv'))

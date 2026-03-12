@@ -56,6 +56,8 @@
     "name": "Full Name",
     "first_name": "First Name",
     "last_name": "Last Name",
+    "initials": "Initials",
+    "initials_placeholder": "e.g. JD",
     "email": "Email",
     "phone": "Phone",
     "address_section": "Address",

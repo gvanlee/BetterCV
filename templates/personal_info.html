@@ -25,6 +25,12 @@
                 <label>{{ t.personal_info.phone }}:</label>
                 <span>{{ info['phone'] or t.common.na }}</span>
             </div>
+            {% if info['initials'] %}
+            <div class="info-item">
+                <label>{{ t.personal_info.initials }}:</label>
+                <span>{{ info['initials'] }}</span>
+            </div>
+            {% endif %}
             <br>
             {% if info['address'] or info['city'] or info['state'] %}
                 <h3>{{ t.personal_info.address_section }}</h3>
