@@ -1,7 +1,7 @@
 from flask import Flask, render_template, request, redirect, url_for, flash, session, Response
 from flask_login import LoginManager, login_user, logout_user, login_required, current_user
 from database import get_db_connection, init_database, get_skill_categories
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 from authlib.integrations.flask_client import OAuth
 from dotenv import load_dotenv
 import json
@@ -21,7 +21,9 @@ import io
 import tempfile
 import urllib.request
 import urllib.error
-from ai_prompts import get_cv_parse_prompt, get_assignment_match_prompt
+from pathlib import Path
+from ai_prompts import get_cv_parse_prompt, get_assignment_match_prompt, get_assignment_parse_prompt
+import re
 
 # Import authentication modules
 from auth import User, get_all_users, get_all_whitelist, add_to_whitelist, remove_from_whitelist, update_user_role, deactivate_user
@@ -81,7 +83,7 @@ def complete_login(user):
 
 def create_email_login_token(user_id):
     conn = get_db_connection()
-    now = datetime.utcnow()
+    now = datetime.now(UTC)
     expires_at = now + timedelta(minutes=EMAIL_LOGIN_TOKEN_TTL_MINUTES)
 
     conn.execute(
@@ -125,13 +127,15 @@ def consume_email_login_token(raw_token):
         return None
 
     expires_at = datetime.fromisoformat(token_row['expires_at'])
-    if expires_at < datetime.utcnow():
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=UTC)
+    if expires_at < datetime.now(UTC):
         conn.close()
         return None
 
     cursor = conn.execute(
         'UPDATE email_login_tokens SET used_at = ? WHERE id = ? AND used_at IS NULL',
-        (datetime.utcnow().isoformat(), token_row['id'])
+        (datetime.now(UTC).isoformat(), token_row['id'])
     )
     conn.commit()
     conn.close()
@@ -929,12 +933,14 @@ def ensure_consultant_selected():
     if request.endpoint in {
         'static',
         'set_language',
+        'full_json_download',
         'list_consultants',
         'add_consultant',
         'switch_consultant',
         'import_consultant',
         'export_consultant',
         'parse_cv',
+        'assignments',
         'assignment_match',
         'review_parsed_cv',
         'import_parsed_cv',
@@ -1260,6 +1266,384 @@ def match_assignment_with_ai(assignment_description, consultant_payloads, provid
     return None, consultants_json, f"Unknown AI provider: {provider}"
 
 
+def parse_assignment_with_ai(assignment_text, provider='gemini'):
+    """Parse assignment text into structured JSON using chosen AI provider."""
+    prompt = get_assignment_parse_prompt(assignment_text)
+    provider = (provider or 'gemini').strip().lower()
+
+    if provider == 'gemini':
+        if not GEMINI_API_KEY or genai_client is None:
+            return None, None, "Gemini API key not configured."
+
+        try:
+            response = genai_client.models.generate_content(
+                model='gemini-flash-latest',
+                contents=prompt
+            )
+            if not response.text:
+                return None, None, "No response from Gemini AI"
+            raw_text = response.text
+        except Exception as e:
+            return None, None, f"Gemini error: {str(e)}"
+
+    elif provider == 'groq':
+        if not GROQ_API_KEY or groq_client is None:
+            return None, None, "Groq API key not configured."
+
+        try:
+            response = groq_client.chat.completions.create(
+                model='llama-3.3-70b-versatile',
+                messages=[
+                    {"role": "system", "content": "You are an assignment parsing assistant. Always return valid JSON only."},
+                    {"role": "user", "content": prompt}
+                ],
+                response_format={"type": "json_object"}
+            )
+            raw_text = response.choices[0].message.content
+        except Exception as e:
+            return None, None, f"Groq error: {str(e)}"
+
+    elif provider == 'ollama':
+        if not OLLAMA_ENABLED:
+            return None, None, "Ollama provider is disabled."
+
+        payload = {
+            "model": OLLAMA_MODEL,
+            "messages": [
+                {"role": "system", "content": "You are an assignment parsing assistant. Return valid JSON only."},
+                {"role": "user", "content": prompt}
+            ],
+            "format": "json",
+            "stream": False
+        }
+
+        request_body = json.dumps(payload).encode('utf-8')
+        api_url = f"{OLLAMA_BASE_URL}/api/chat"
+        ollama_request = urllib.request.Request(
+            api_url,
+            data=request_body,
+            headers={'Content-Type': 'application/json'},
+            method='POST'
+        )
+
+        try:
+            with urllib.request.urlopen(ollama_request, timeout=OLLAMA_TIMEOUT_SECONDS) as response:
+                response_data = json.loads(response.read().decode('utf-8'))
+
+            raw_text = response_data.get('message', {}).get('content', '').strip()
+            if not raw_text:
+                return None, None, "No response from Ollama"
+        except urllib.error.HTTPError as e:
+            return None, None, f"Ollama HTTP error: {e.code} {e.reason}"
+        except urllib.error.URLError as e:
+            return None, None, f"Ollama connection error: {e.reason}"
+        except Exception as e:
+            return None, None, f"Ollama error: {str(e)}"
+    else:
+        return None, None, f"Unknown AI provider: {provider}"
+
+    clean_text = raw_text.strip()
+    if clean_text.startswith('```json'):
+        clean_text = clean_text[7:]
+    elif clean_text.startswith('```'):
+        clean_text = clean_text[3:]
+    if clean_text.endswith('```'):
+        clean_text = clean_text[:-3]
+    clean_text = clean_text.strip()
+
+    try:
+        return json.loads(clean_text), raw_text, None
+    except json.JSONDecodeError as e:
+        return None, raw_text, f"Failed to parse AI response as JSON: {str(e)}"
+
+
+def normalize_iso_date(value):
+    """Normalize date values to YYYY-MM-DD, return empty string when invalid."""
+    if not value:
+        return ''
+    value_str = str(value).strip()
+    if not value_str:
+        return ''
+    try:
+        return datetime.strptime(value_str, '%Y-%m-%d').strftime('%Y-%m-%d')
+    except ValueError:
+        return ''
+
+
+def parse_date_value(value):
+    """Parse a date-ish value into a date object when possible."""
+    if value is None:
+        return None
+
+    value_str = str(value).strip()
+    if not value_str:
+        return None
+
+    # Most stored values are YYYY-MM-DD or datetime strings starting with it.
+    if len(value_str) >= 10:
+        try:
+            return datetime.strptime(value_str[:10], '%Y-%m-%d').date()
+        except ValueError:
+            pass
+
+    try:
+        parsed = datetime.fromisoformat(value_str.replace('Z', '+00:00'))
+        return parsed.date()
+    except ValueError:
+        return None
+
+
+def format_year_month(value):
+    """Format a stored date value as YYYY-MM for CV rendering."""
+    date_value = parse_date_value(value)
+    if date_value is not None:
+        return date_value.strftime('%Y-%m')
+
+    value_str = str(value or '').strip()
+    if len(value_str) >= 7:
+        return value_str[:7]
+    return ''
+
+
+def is_assignment_active(assignment_row, reference_date=None):
+    """Return True when assignment is still valid for matching dropdown selection."""
+    today = reference_date or datetime.now(UTC).date()
+
+    deadline_date = parse_date_value(assignment_row.get('deadline'))
+    if deadline_date is not None:
+        return deadline_date >= today
+
+    created_date = parse_date_value(assignment_row.get('created_at'))
+    if created_date is None:
+        # Keep legacy rows without a parseable timestamp available.
+        return True
+
+    return created_date >= (today - timedelta(days=14))
+
+
+def get_active_assignment_for_matching(conn, assignment_id):
+    """Fetch an assignment only when it is still active for matching."""
+    assignment_row = conn.execute(
+        'SELECT * FROM assignments WHERE id = ?',
+        (assignment_id,)
+    ).fetchone()
+    if not assignment_row:
+        return None
+
+    assignment_dict = dict(assignment_row)
+    if not is_assignment_active(assignment_dict):
+        return None
+
+    return assignment_dict
+
+
+def normalize_assignment_list(value):
+    """Normalize list-like assignment fields to a clean list of strings."""
+    if isinstance(value, list):
+        result = []
+        for item in value:
+            item_text = str(item).strip()
+            if item_text:
+                result.append(item_text)
+        return result
+
+    if isinstance(value, str):
+        parts = re.split(r'\r?\n|;', value)
+        if len(parts) == 1:
+            parts = [p.strip() for p in value.split(',')]
+        return [part.strip() for part in parts if part and part.strip()]
+
+    return []
+
+
+def normalize_assignment_number(value):
+    """Normalize numeric assignment field to float or None."""
+    if value is None or value == '':
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+
+    value_str = str(value).strip().replace(',', '.')
+    if not value_str:
+        return None
+
+    try:
+        return float(value_str)
+    except ValueError:
+        return None
+
+
+def normalize_assignment_bool(value):
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return False
+    return str(value).strip().lower() in {'1', 'true', 'yes', 'on'}
+
+
+def normalize_assignment_payload(raw_payload):
+    """Normalize parsed assignment payload to app storage schema."""
+    payload = raw_payload or {}
+    assignment = payload.get('assignment') if isinstance(payload, dict) else {}
+    contact = payload.get('contact') if isinstance(payload, dict) else {}
+
+    if not isinstance(assignment, dict):
+        assignment = {}
+    if not isinstance(contact, dict):
+        contact = {}
+
+    start_date = normalize_iso_date(assignment.get('start_date'))
+    deadline = normalize_iso_date(assignment.get('deadline'))
+    deadline_estimated = normalize_assignment_bool(assignment.get('deadline_estimated'))
+
+    if not deadline and start_date:
+        start_dt = datetime.strptime(start_date, '%Y-%m-%d')
+        deadline = (start_dt - timedelta(days=7)).strftime('%Y-%m-%d')
+        deadline_estimated = True
+    elif not deadline:
+        deadline_estimated = True
+
+    return {
+        'title': str(assignment.get('title', '')).strip(),
+        'description': str(assignment.get('description', '')).strip(),
+        'reference_id': str(assignment.get('reference_id', '')).strip(),
+        'hot_seat': str(assignment.get('hot_seat', '')).strip(),
+        'hourly_rate_min': normalize_assignment_number(assignment.get('hourly_rate_min')),
+        'hourly_rate_max': normalize_assignment_number(assignment.get('hourly_rate_max')),
+        'hourly_rate': normalize_assignment_number(assignment.get('hourly_rate')),
+        'knock_out_criteria': normalize_assignment_list(assignment.get('knock_out_criteria')),
+        'nice_to_have_criteria': normalize_assignment_list(assignment.get('nice_to_have_criteria')),
+        'competenties': normalize_assignment_list(assignment.get('competenties')),
+        'deadline': deadline,
+        'deadline_estimated': deadline_estimated,
+        'start_date': start_date,
+        'recruiter_name': str(contact.get('recruiter_name', '')).strip(),
+        'recruiter_email': str(contact.get('recruiter_email', '')).strip(),
+        'recruiter_phone': str(contact.get('recruiter_phone', '')).strip()
+    }
+
+
+def get_assignment_form_from_request(form_data):
+    """Build assignment form model from submitted request data."""
+    return {
+        'title': (form_data.get('title') or '').strip(),
+        'description': (form_data.get('description') or '').strip(),
+        'reference_id': (form_data.get('reference_id') or '').strip(),
+        'source_text': (form_data.get('source_text') or '').strip(),
+        'hot_seat': (form_data.get('hot_seat') or '').strip(),
+        'hourly_rate_min': (form_data.get('hourly_rate_min') or '').strip(),
+        'hourly_rate_max': (form_data.get('hourly_rate_max') or '').strip(),
+        'hourly_rate': (form_data.get('hourly_rate') or '').strip(),
+        'knock_out_criteria_text': (form_data.get('knock_out_criteria_text') or '').strip(),
+        'nice_to_have_criteria_text': (form_data.get('nice_to_have_criteria_text') or '').strip(),
+        'competenties_text': (form_data.get('competenties_text') or '').strip(),
+        'deadline': (form_data.get('deadline') or '').strip(),
+        'deadline_estimated': bool(form_data.get('deadline_estimated')),
+        'start_date': (form_data.get('start_date') or '').strip(),
+        'recruiter_name': (form_data.get('recruiter_name') or '').strip(),
+        'recruiter_email': (form_data.get('recruiter_email') or '').strip(),
+        'recruiter_phone': (form_data.get('recruiter_phone') or '').strip()
+    }
+
+
+def apply_normalized_assignment_to_form(form_model, normalized_assignment):
+    """Update assignment form model with normalized assignment values."""
+    form_model['title'] = normalized_assignment.get('title', '')
+    form_model['description'] = normalized_assignment.get('description', '')
+    form_model['reference_id'] = normalized_assignment.get('reference_id', '')
+    form_model['hot_seat'] = normalized_assignment.get('hot_seat', '')
+    form_model['hourly_rate_min'] = '' if normalized_assignment.get('hourly_rate_min') is None else str(normalized_assignment.get('hourly_rate_min'))
+    form_model['hourly_rate_max'] = '' if normalized_assignment.get('hourly_rate_max') is None else str(normalized_assignment.get('hourly_rate_max'))
+    form_model['hourly_rate'] = '' if normalized_assignment.get('hourly_rate') is None else str(normalized_assignment.get('hourly_rate'))
+    form_model['knock_out_criteria_text'] = '\n'.join(normalized_assignment.get('knock_out_criteria', []))
+    form_model['nice_to_have_criteria_text'] = '\n'.join(normalized_assignment.get('nice_to_have_criteria', []))
+    form_model['competenties_text'] = '\n'.join(normalized_assignment.get('competenties', []))
+    form_model['deadline'] = normalized_assignment.get('deadline', '')
+    form_model['deadline_estimated'] = bool(normalized_assignment.get('deadline_estimated'))
+    form_model['start_date'] = normalized_assignment.get('start_date', '')
+    form_model['recruiter_name'] = normalized_assignment.get('recruiter_name', '')
+    form_model['recruiter_email'] = normalized_assignment.get('recruiter_email', '')
+    form_model['recruiter_phone'] = normalized_assignment.get('recruiter_phone', '')
+
+
+def build_assignment_form_defaults():
+    """Return empty assignment form defaults."""
+    return {
+        'title': '',
+        'description': '',
+        'reference_id': '',
+        'source_text': '',
+        'hot_seat': '',
+        'hourly_rate_min': '',
+        'hourly_rate_max': '',
+        'hourly_rate': '',
+        'knock_out_criteria_text': '',
+        'nice_to_have_criteria_text': '',
+        'competenties_text': '',
+        'deadline': '',
+        'deadline_estimated': False,
+        'start_date': '',
+        'recruiter_name': '',
+        'recruiter_email': '',
+        'recruiter_phone': ''
+    }
+
+
+def parse_assignment_list_json(raw_json):
+    """Parse JSON list field from database into Python list."""
+    if not raw_json:
+        return []
+    try:
+        parsed = json.loads(raw_json)
+    except (TypeError, json.JSONDecodeError):
+        return []
+
+    if isinstance(parsed, list):
+        return [str(item).strip() for item in parsed if str(item).strip()]
+    return []
+
+
+def build_assignment_match_text(assignment_record):
+    """Build a text block for assignment matching from a stored assignment record."""
+    parts = []
+
+    title = (assignment_record.get('title') or '').strip()
+    if title:
+        parts.append(f"Title: {title}")
+
+    description = (assignment_record.get('description') or '').strip()
+    if description:
+        parts.append(f"Description:\n{description}")
+
+    knock_out_items = parse_assignment_list_json(assignment_record.get('knock_out_criteria'))
+    if knock_out_items:
+        parts.append('Knock-out criteria:\n' + '\n'.join([f"- {item}" for item in knock_out_items]))
+
+    nice_to_have_items = parse_assignment_list_json(assignment_record.get('nice_to_have_criteria'))
+    if nice_to_have_items:
+        parts.append('Nice-to-have criteria:\n' + '\n'.join([f"- {item}" for item in nice_to_have_items]))
+
+    competencies_items = parse_assignment_list_json(assignment_record.get('competenties'))
+    if competencies_items:
+        parts.append('Competencies:\n' + '\n'.join([f"- {item}" for item in competencies_items]))
+
+    for label, key in [
+        ('Start date', 'start_date'),
+        ('Deadline', 'deadline'),
+        ('Hourly rate min', 'hourly_rate_min'),
+        ('Hourly rate max', 'hourly_rate_max'),
+        ('Hourly rate', 'hourly_rate')
+    ]:
+        value = assignment_record.get(key)
+        if value not in (None, ''):
+            parts.append(f"{label}: {value}")
+
+    if not parts:
+        return (assignment_record.get('source_text') or '').strip()
+
+    return '\n\n'.join(parts)
+
+
 def _derive_initials(name):
     """Return initials derived from a full name string."""
     if not name:
@@ -1376,6 +1760,16 @@ def build_consultant_ai_payload(conn, consultant_id):
                     FROM skills s
                     JOIN project_skills ps ON s.id = ps.skill_id
                     WHERE ps.project_id = ?
+                ''', (row['id'],)).fetchall()
+                row_data['skills'] = [s['skill_name'] for s in skills]
+
+            if table == 'certifications':
+                skills = conn.execute('''
+                    SELECT s.skill_name
+                    FROM skills s
+                    JOIN certification_skills cs ON s.id = cs.skill_id
+                    WHERE cs.certification_id = ?
+                    ORDER BY s.skill_name
                 ''', (row['id'],)).fetchall()
                 row_data['skills'] = [s['skill_name'] for s in skills]
 
@@ -1694,7 +2088,7 @@ def import_consultant_data(conn, consultant_id, payload):
         if cert_key in seen_certifications:
             continue
         seen_certifications.add(cert_key)
-        conn.execute('''
+        cursor = conn.execute('''
             INSERT INTO certifications (
                 consultant_id, certification_name, issuing_organization, issue_date,
                 expiration_date, credential_id, credential_url, description
@@ -1709,6 +2103,14 @@ def import_consultant_data(conn, consultant_id, payload):
             cert.get('credential_url', ''),
             cert.get('description', '')
         ))
+
+        cert_id = cursor.lastrowid
+        linked_skill_ids = set()
+        for skill_name in cert.get('skills', []):
+            skill_id = skill_name_to_id.get(str(skill_name).strip().lower())
+            if skill_id and skill_id not in linked_skill_ids:
+                linked_skill_ids.add(skill_id)
+                conn.execute('INSERT INTO certification_skills (certification_id, skill_id) VALUES (?, ?)', (cert_id, skill_id))
 
 
 @app.route('/consultants/import', methods=['GET', 'POST'])
@@ -1915,6 +2317,177 @@ def import_parsed_cv():
     return redirect(url_for('import_consultant'))
 
 
+@app.route('/assignments', methods=['GET', 'POST'])
+@admin_required
+def assignments():
+    """Admin assignment intake page with AI-assisted structuring."""
+    conn = get_db_connection()
+    assignment_form = build_assignment_form_defaults()
+    ai_provider = 'gemini'
+    raw_ai_response = ''
+
+    if request.method == 'POST':
+        action = (request.form.get('action') or 'analyze').strip().lower()
+        assignment_form = get_assignment_form_from_request(request.form)
+        raw_ai_response = (request.form.get('raw_ai_response') or '').strip()
+        ai_provider = (request.form.get('ai_provider') or 'gemini').strip().lower()
+        if ai_provider not in {'gemini', 'groq', 'ollama'}:
+            ai_provider = 'gemini'
+
+        if not assignment_form['source_text']:
+            conn.close()
+            flash(get_translation('messages.assignment_source_text_required'), 'error')
+            return redirect(url_for('assignments'))
+
+        if action == 'analyze':
+            parsed_payload, model_raw_response, error = parse_assignment_with_ai(
+                assignment_form['source_text'],
+                ai_provider
+            )
+
+            if error:
+                flash(f"{get_translation('messages.assignment_parse_failed')}: {error}", 'error')
+            else:
+                normalized = normalize_assignment_payload(parsed_payload)
+                apply_normalized_assignment_to_form(assignment_form, normalized)
+                raw_ai_response = model_raw_response or ''
+                flash(get_translation('messages.assignment_parse_success'), 'success')
+
+        elif action == 'save':
+            normalized = {
+                'title': assignment_form['title'],
+                'description': assignment_form['description'],
+                'reference_id': assignment_form['reference_id'],
+                'hot_seat': assignment_form['hot_seat'],
+                'hourly_rate_min': normalize_assignment_number(assignment_form['hourly_rate_min']),
+                'hourly_rate_max': normalize_assignment_number(assignment_form['hourly_rate_max']),
+                'hourly_rate': normalize_assignment_number(assignment_form['hourly_rate']),
+                'knock_out_criteria': normalize_assignment_list(assignment_form['knock_out_criteria_text']),
+                'nice_to_have_criteria': normalize_assignment_list(assignment_form['nice_to_have_criteria_text']),
+                'competenties': normalize_assignment_list(assignment_form['competenties_text']),
+                'deadline': normalize_iso_date(assignment_form['deadline']),
+                'deadline_estimated': bool(assignment_form['deadline_estimated']),
+                'start_date': normalize_iso_date(assignment_form['start_date']),
+                'recruiter_name': assignment_form['recruiter_name'],
+                'recruiter_email': assignment_form['recruiter_email'],
+                'recruiter_phone': assignment_form['recruiter_phone']
+            }
+
+            if not normalized['deadline'] and normalized['start_date']:
+                start_dt = datetime.strptime(normalized['start_date'], '%Y-%m-%d')
+                normalized['deadline'] = (start_dt - timedelta(days=7)).strftime('%Y-%m-%d')
+                normalized['deadline_estimated'] = True
+
+            if not normalized['title'] and not normalized['description']:
+                flash(get_translation('messages.assignment_title_or_description_required'), 'error')
+            else:
+                conn.execute(
+                    '''
+                        INSERT INTO assignments (
+                            title, description, reference_id, source_text, hot_seat,
+                            hourly_rate_min, hourly_rate_max, hourly_rate,
+                            knock_out_criteria, nice_to_have_criteria, competenties,
+                            deadline, deadline_estimated, start_date,
+                            recruiter_name, recruiter_email, recruiter_phone,
+                            parse_provider, raw_ai_response, created_by_user_id, updated_at
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ''',
+                    (
+                        normalized['title'],
+                        normalized['description'],
+                        normalized['reference_id'],
+                        assignment_form['source_text'],
+                        normalized['hot_seat'],
+                        normalized['hourly_rate_min'],
+                        normalized['hourly_rate_max'],
+                        normalized['hourly_rate'],
+                        json.dumps(normalized['knock_out_criteria'], ensure_ascii=False),
+                        json.dumps(normalized['nice_to_have_criteria'], ensure_ascii=False),
+                        json.dumps(normalized['competenties'], ensure_ascii=False),
+                        normalized['deadline'],
+                        1 if normalized['deadline_estimated'] else 0,
+                        normalized['start_date'],
+                        normalized['recruiter_name'],
+                        normalized['recruiter_email'],
+                        normalized['recruiter_phone'],
+                        ai_provider,
+                        raw_ai_response,
+                        current_user.id,
+                        datetime.now(UTC).isoformat()
+                    )
+                )
+                conn.commit()
+                conn.close()
+                flash(get_translation('messages.assignment_saved'), 'success')
+                return redirect(url_for('assignments'))
+
+    assignment_rows = conn.execute(
+        '''
+            SELECT id, title, description, start_date, deadline, deadline_estimated,
+                   recruiter_name, recruiter_email, created_at
+            FROM assignments
+            ORDER BY (deadline IS NULL) ASC, deadline DESC, created_at DESC, id DESC
+        '''
+    ).fetchall()
+    conn.close()
+
+    return render_template(
+        'assignments.html',
+        assignments=assignment_rows,
+        assignment_form=assignment_form,
+        ai_provider=ai_provider,
+        raw_ai_response=raw_ai_response,
+        has_groq=bool(GROQ_API_KEY and groq_client is not None),
+        has_ollama=bool(OLLAMA_ENABLED)
+    )
+
+
+@app.route('/assignments/<int:assignment_id>')
+@admin_required
+def assignment_detail(assignment_id):
+    """View a stored assignment with full structured details."""
+    conn = get_db_connection()
+    assignment = conn.execute(
+        'SELECT * FROM assignments WHERE id = ?',
+        (assignment_id,)
+    ).fetchone()
+    conn.close()
+
+    if not assignment:
+        flash(get_translation('messages.assignment_not_found'), 'error')
+        return redirect(url_for('assignments'))
+
+    assignment_data = dict(assignment)
+    assignment_data['knock_out_criteria_list'] = parse_assignment_list_json(assignment_data.get('knock_out_criteria'))
+    assignment_data['nice_to_have_criteria_list'] = parse_assignment_list_json(assignment_data.get('nice_to_have_criteria'))
+    assignment_data['competenties_list'] = parse_assignment_list_json(assignment_data.get('competenties'))
+
+    return render_template('assignment_detail.html', assignment=assignment_data)
+
+
+@app.route('/assignments/delete/<int:assignment_id>', methods=['POST'])
+@admin_required
+def delete_assignment(assignment_id):
+    """Delete a stored assignment."""
+    conn = get_db_connection()
+    assignment = conn.execute(
+        'SELECT id FROM assignments WHERE id = ?',
+        (assignment_id,)
+    ).fetchone()
+
+    if not assignment:
+        conn.close()
+        flash(get_translation('messages.assignment_not_found'), 'error')
+        return redirect(url_for('assignments'))
+
+    conn.execute('DELETE FROM assignments WHERE id = ?', (assignment_id,))
+    conn.commit()
+    conn.close()
+
+    flash(get_translation('messages.assignment_deleted'), 'success')
+    return redirect(url_for('assignments'))
+
+
 @app.route('/assignment-match', methods=['GET', 'POST'])
 @login_required
 def assignment_match():
@@ -1924,6 +2497,14 @@ def assignment_match():
     all_consultants = []
     selected_consultant_ids = []
     selected_consultant_names = []
+    assignment_rows = conn.execute(
+        'SELECT id, title, description, source_text, deadline, created_at FROM assignments ORDER BY created_at DESC, id DESC'
+    ).fetchall()
+    assignment_options = [
+        dict(row) for row in assignment_rows
+        if is_assignment_active(dict(row))
+    ]
+    selected_assignment_id = None
     assignment_description = ''
     ai_provider = 'gemini'
     match_result = None
@@ -1951,8 +2532,36 @@ def assignment_match():
             if own_consultant:
                 selected_consultant_names = [own_consultant['display_name']]
 
+    requested_assignment_id = request.args.get('assignment_id')
+    if requested_assignment_id:
+        try:
+            selected_assignment_id = int(requested_assignment_id)
+        except (TypeError, ValueError):
+            selected_assignment_id = None
+
+        if selected_assignment_id is not None:
+            selected_assignment = get_active_assignment_for_matching(conn, selected_assignment_id)
+            if selected_assignment:
+                assignment_description = build_assignment_match_text(selected_assignment)
+            else:
+                selected_assignment_id = None
+
     if request.method == 'POST':
         assignment_description = (request.form.get('assignment_description') or '').strip()
+        raw_assignment_id = (request.form.get('assignment_id') or '').strip()
+        if raw_assignment_id:
+            try:
+                selected_assignment_id = int(raw_assignment_id)
+            except (TypeError, ValueError):
+                selected_assignment_id = None
+
+        if selected_assignment_id and not assignment_description:
+            selected_assignment = get_active_assignment_for_matching(conn, selected_assignment_id)
+            if selected_assignment:
+                assignment_description = build_assignment_match_text(selected_assignment)
+            else:
+                selected_assignment_id = None
+
         ai_provider = (request.form.get('ai_provider') or 'gemini').strip().lower()
         if ai_provider not in {'gemini', 'groq', 'ollama'}:
             ai_provider = 'gemini'
@@ -2046,6 +2655,8 @@ def assignment_match():
         all_consultants=all_consultants,
         selected_consultant_ids=selected_consultant_ids,
         selected_consultant_names=selected_consultant_names,
+        assignment_options=assignment_options,
+        selected_assignment_id=selected_assignment_id,
         assignment_description=assignment_description,
         ai_provider=ai_provider,
         match_result=match_result,
@@ -2141,6 +2752,31 @@ def export_consultant(consultant_id):
         mimetype='application/json'
     )
     response.headers['Content-Disposition'] = f'attachment; filename={filename}'
+    return response
+
+
+@app.route('/full-json-download')
+def full_json_download():
+    """Download anonymized JSON payload for all consultants (no auth required)."""
+    conn = get_db_connection()
+    consultants = conn.execute(
+        'SELECT id FROM consultants ORDER BY display_name, id'
+    ).fetchall()
+
+    anonymized_payloads = []
+    for consultant in consultants:
+        payload = build_consultant_ai_payload(conn, consultant['id'])
+        if not payload:
+            continue
+        anonymized_payloads.append(anonymize_consultant_payload_for_ai(payload))
+
+    conn.close()
+
+    response = Response(
+        json.dumps(anonymized_payloads, indent=2, ensure_ascii=False),
+        mimetype='application/json'
+    )
+    response.headers.set('Content-Disposition', 'attachment', filename='all_candidates_anonymized.json')
     return response
 
 
@@ -2946,8 +3582,6 @@ def view_certifications():
         'SELECT * FROM certifications WHERE consultant_id = ? ORDER BY issue_date IS NULL, issue_date DESC',
         (consultant_id,)
     ).fetchall()
-    conn.close()
-    
     # Add issue_year to each certification
     certifications = []
     for cert in certifications_raw:
@@ -2956,7 +3590,19 @@ def view_certifications():
             issue_date_str = str(cert_dict['issue_date'])
             if issue_date_str and len(issue_date_str) >= 4:
                 cert_dict['issue_year'] = issue_date_str[:4]
+        cert_dict['skills'] = [row['skill_name'] for row in conn.execute(
+            '''
+            SELECT s.skill_name
+            FROM skills s
+            JOIN certification_skills cs ON s.id = cs.skill_id
+            WHERE cs.certification_id = ?
+            ORDER BY s.skill_name
+            ''',
+            (cert['id'],)
+        ).fetchall()]
         certifications.append(cert_dict)
+
+    conn.close()
     
     return render_template('certifications.html', certifications=certifications)
 
@@ -2965,11 +3611,11 @@ def view_certifications():
 @login_required
 def add_certification():
     """Add new certification."""
+    conn = get_db_connection()
+    consultant_id = resolve_current_consultant_id(conn)
+
     if request.method == 'POST':
-        conn = get_db_connection()
-        consultant_id = resolve_current_consultant_id(conn)
-        
-        conn.execute('''
+        cursor = conn.execute('''
             INSERT INTO certifications (
                 consultant_id, certification_name, issuing_organization, issue_date, expiration_date,
                 credential_id, credential_url, description
@@ -2984,13 +3630,30 @@ def add_certification():
             request.form.get('credential_url', ''),
             request.form.get('description', '')
         ))
+
+        certification_id = cursor.lastrowid
+        skill_ids = filter_skill_ids_for_consultant(conn, consultant_id, request.form.getlist('skill_ids'))
+        for skill_id in skill_ids:
+            conn.execute(
+                'INSERT INTO certification_skills (certification_id, skill_id) VALUES (?, ?)',
+                (certification_id, skill_id)
+            )
         
         conn.commit()
         conn.close()
         flash(get_translation('messages.certification_added'), 'success')
         return redirect(url_for('view_certifications'))
+
+    all_skills = conn.execute('''
+        SELECT s.id, s.skill_name, c.name as category_name
+        FROM skills s
+        LEFT JOIN skill_categories c ON s.category_id = c.id
+        WHERE s.consultant_id = ?
+        ORDER BY c.name, s.skill_name
+    ''', (consultant_id,)).fetchall()
+    conn.close()
     
-    return render_template('edit_certification.html', certification=None)
+    return render_template('edit_certification.html', certification=None, all_skills=all_skills, current_skill_ids=[])
 
 
 @app.route('/certifications/edit/<int:id>', methods=['GET', 'POST'])
@@ -3040,14 +3703,36 @@ def edit_certification(id):
                 id,
                 consultant_id
             ))
+
+        target_consultant_id = certification['consultant_id'] if current_user.is_admin() else consultant_id
+        conn.execute('DELETE FROM certification_skills WHERE certification_id = ?', (id,))
+        skill_ids = filter_skill_ids_for_consultant(conn, target_consultant_id, request.form.getlist('skill_ids'))
+        for skill_id in skill_ids:
+            conn.execute(
+                'INSERT INTO certification_skills (certification_id, skill_id) VALUES (?, ?)',
+                (id, skill_id)
+            )
         
         conn.commit()
         conn.close()
         flash(get_translation('messages.certification_updated'), 'success')
         return redirect(url_for('view_certifications'))
-    
+
+    target_consultant_id = certification['consultant_id'] if current_user.is_admin() else consultant_id
+    all_skills = conn.execute('''
+        SELECT s.id, s.skill_name, c.name as category_name
+        FROM skills s
+        LEFT JOIN skill_categories c ON s.category_id = c.id
+        WHERE s.consultant_id = ?
+        ORDER BY c.name, s.skill_name
+    ''', (target_consultant_id,)).fetchall()
+    current_skill_ids = [row['skill_id'] for row in conn.execute(
+        'SELECT skill_id FROM certification_skills WHERE certification_id = ?',
+        (id,)
+    ).fetchall()]
+
     conn.close()
-    return render_template('edit_certification.html', certification=certification)
+    return render_template('edit_certification.html', certification=certification, all_skills=all_skills, current_skill_ids=current_skill_ids)
 
 
 @app.route('/certifications/delete/<int:id>', methods=['POST'])
@@ -3101,10 +3786,397 @@ def export_cv():
     return render_template('export_cv.html', has_data=has_data)
 
 
+def build_docx_cv(cv_data, avg_proof=False):
+    """Build a native DOCX CV with consistent styling and structure."""
+    from docx import Document
+    from docx.oxml import OxmlElement
+    from docx.oxml.ns import qn
+    from docx.shared import Pt, Inches, RGBColor
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+
+    HEADER_COLOR = RGBColor(245, 175, 2)
+    FONT_COLOR = RGBColor(0, 0, 0)
+
+    def tr(key):
+        return get_translation(key, lang)
+
+    def as_dict(record):
+        if record is None:
+            return {}
+        if isinstance(record, dict):
+            return record
+        try:
+            return dict(record)
+        except Exception:
+            return {}
+
+    def clean_text(value):
+        return str(value or '').strip()
+
+    def add_bottom_border(paragraph, color, size='8', space='1'):
+        p_pr = paragraph._p.get_or_add_pPr()
+        p_borders = p_pr.find(qn('w:pBdr'))
+        if p_borders is None:
+            p_borders = OxmlElement('w:pBdr')
+            p_pr.append(p_borders)
+
+        bottom = p_borders.find(qn('w:bottom'))
+        if bottom is None:
+            bottom = OxmlElement('w:bottom')
+            p_borders.append(bottom)
+
+        bottom.set(qn('w:val'), 'single')
+        bottom.set(qn('w:sz'), size)
+        bottom.set(qn('w:space'), space)
+        bottom.set(qn('w:color'), str(color))
+
+    def add_section_heading(text):
+        heading = doc.add_paragraph()
+        heading.paragraph_format.space_before = Pt(6)
+        heading.paragraph_format.space_after = Pt(2)
+        run = heading.add_run(text)
+        run.bold = True
+        run.font.size = Pt(12)
+        run.font.color.rgb = FONT_COLOR
+        add_bottom_border(heading, HEADER_COLOR)
+
+    def add_markdownish_text(text):
+        lines = [line.rstrip() for line in clean_text(text).splitlines()]
+        if not lines:
+            return
+
+        for raw_line in lines:
+            line = raw_line.strip()
+            if not line:
+                continue
+            if re.match(r'^[-*+]\s+', line) or re.match(r'^\d+[\.)]\s+', line):
+                line = re.sub(r'^[-*+]\s+', '', line)
+                line = re.sub(r'^\d+[\.)]\s+', '', line)
+                paragraph = doc.add_paragraph(line, style='List Bullet')
+            else:
+                paragraph = doc.add_paragraph(line)
+            paragraph.paragraph_format.space_after = Pt(0)
+
+    def format_period(start_date, end_date, ongoing_label):
+        start = clean_text(start_date)
+        end = clean_text(end_date)
+        if not start and not end:
+            return ''
+        if not start:
+            return end or ongoing_label
+        return f"{start} - {end or ongoing_label}"
+
+    doc = Document()
+    section = doc.sections[0]
+    section.top_margin = Inches(0.6)
+    section.bottom_margin = Inches(0.6)
+    section.left_margin = Inches(0.7)
+    section.right_margin = Inches(0.7)
+
+    normal_style = doc.styles['Normal']
+    normal_style.font.name = 'Calibri'
+    normal_style.font.size = Pt(10)
+
+    lang = cv_data.get('current_lang') or session.get('language', 'en')
+    personal_info = as_dict(cv_data.get('personal_info'))
+
+    if not avg_proof:
+        logo_path = Path(app.root_path, 'static', 'ibs-logo-print.png')
+        if logo_path.exists():
+            logo_paragraph = doc.add_paragraph()
+            logo_paragraph.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+            logo_paragraph.add_run().add_picture(str(logo_path), width=Inches(1.6))
+
+    if personal_info:
+        full_name = f"{clean_text(personal_info.get('first_name'))} {clean_text(personal_info.get('last_name'))}".strip()
+        if full_name:
+            title = doc.add_paragraph()
+            title.paragraph_format.space_after = Pt(1)
+            run = title.add_run(full_name)
+            run.bold = True
+            run.font.size = Pt(20)
+            run.font.color.rgb = HEADER_COLOR
+
+        if not avg_proof and clean_text(personal_info.get('email')):
+            doc.add_paragraph(clean_text(personal_info.get('email'))).paragraph_format.space_after = Pt(0)
+        if not avg_proof and clean_text(personal_info.get('phone')):
+            doc.add_paragraph(clean_text(personal_info.get('phone'))).paragraph_format.space_after = Pt(0)
+
+        if avg_proof:
+            city = clean_text(personal_info.get('city'))
+            if city:
+                doc.add_paragraph(city).paragraph_format.space_after = Pt(0)
+        else:
+            address_parts = []
+            address = clean_text(personal_info.get('address'))
+            zip_code = clean_text(personal_info.get('zip_code'))
+            city = clean_text(personal_info.get('city'))
+            state = clean_text(personal_info.get('state'))
+            country = clean_text(personal_info.get('country'))
+
+            if address:
+                address_parts.append(address)
+            city_part = f"{zip_code} {city}".strip() if (zip_code or city) else ''
+            if city_part:
+                address_parts.append(city_part)
+            if state:
+                address_parts.append(f"({state})")
+            if country:
+                address_parts.append(country)
+            if address_parts:
+                doc.add_paragraph(', '.join(address_parts)).paragraph_format.space_after = Pt(0)
+
+        if not avg_proof:
+            links = []
+            linkedin = clean_text(personal_info.get('linkedin_url'))
+            github = clean_text(personal_info.get('github_url'))
+            portfolio = clean_text(personal_info.get('portfolio_url'))
+            if linkedin:
+                links.append(f"LinkedIn: {linkedin}")
+            if github:
+                links.append(f"GitHub: {github}")
+            if portfolio:
+                links.append(f"Portfolio: {portfolio}")
+            if links:
+                doc.add_paragraph(' | '.join(links)).paragraph_format.space_after = Pt(0)
+
+        summary = clean_text(personal_info.get('professional_summary'))
+        if summary:
+            add_section_heading(tr('personal_info.professional_summary'))
+            add_markdownish_text(summary)
+
+    certifications = cv_data.get('certifications') or []
+    if certifications:
+        add_section_heading(tr('certifications.title'))
+        for cert in certifications:
+            cert_name = clean_text(cert.get('certification_name'))
+            issuer = clean_text(cert.get('issuing_organization'))
+            issue_year = clean_text(cert.get('issue_year'))
+            cert_line = cert_name
+            if issuer:
+                cert_line = f"{cert_line}: {issuer}" if cert_line else issuer
+            if issue_year:
+                cert_line = f"{cert_line} ({issue_year})" if cert_line else f"({issue_year})"
+            if cert_line:
+                bullet = doc.add_paragraph(cert_line, style='List Bullet')
+                bullet.paragraph_format.space_after = Pt(0)
+
+            expiration = clean_text(cert.get('expiration_date'))
+            if expiration:
+                doc.add_paragraph(f"{tr('certifications.expires')}: {expiration}")
+
+            credential_id = clean_text(cert.get('credential_id'))
+            if credential_id:
+                doc.add_paragraph(f"{tr('certifications.credential_id')}: {credential_id}")
+
+            credential_url = clean_text(cert.get('credential_url'))
+            if credential_url:
+                doc.add_paragraph(f"{tr('certifications.view_credential')}: {credential_url}")
+
+            cert_skills = [clean_text(skill) for skill in (cert.get('skills') or [])]
+            cert_skills = [skill for skill in cert_skills if skill]
+            if cert_skills:
+                line = doc.add_paragraph()
+                line.paragraph_format.space_after = Pt(0)
+                line.add_run(f"{tr('work_experience.relevant_skills')}: ").bold = False
+                line.add_run(', '.join(cert_skills)).italic = True
+
+            cert_desc = clean_text(cert.get('description'))
+            if cert_desc:
+                add_markdownish_text(cert_desc)
+
+    work_experiences = cv_data.get('work_experiences') or []
+    if work_experiences:
+        add_section_heading(tr('work_experience.title'))
+        for exp in work_experiences:
+            company = clean_text(exp.get('company_name'))
+            position = clean_text(exp.get('position_title'))
+            start = clean_text(exp.get('start_date_display') or exp.get('start_date'))
+            end = tr('work_experience.present') if exp.get('is_current') else clean_text(exp.get('end_date_display') or exp.get('end_date'))
+            period = format_period(start, end, tr('work_experience.present'))
+
+            heading = doc.add_paragraph()
+            heading.paragraph_format.space_before = Pt(6)
+            heading.paragraph_format.space_after = Pt(2)
+            add_bottom_border(heading, FONT_COLOR, '2')
+
+            title_text = company
+            if position:
+                title_text = f"{title_text} | {position}" if title_text else position
+            heading_run = heading.add_run(title_text)
+            heading_run.bold = True
+            heading_run.font.size = Pt(11)
+            if period:
+                period_run = heading.add_run(f" ({period})")
+                period_run.italic = True
+                period_run.font.size = Pt(9)
+                period_run.font.color.rgb = RGBColor(127, 140, 141)
+
+            for field in ['description', 'achievements']:
+                text = clean_text(exp.get(field))
+                if text:
+                    if field == 'achievements':
+                        label = doc.add_paragraph()
+                        label.add_run(f"{tr('work_experience.achievements')}: ").bold = True
+                        label.paragraph_format.space_before = Pt(2)
+                        label.paragraph_format.space_after = Pt(0)
+                    add_markdownish_text(text)
+
+            for key, label_key in [
+                ('star_situation', 'work_experience.star_situation'),
+                ('star_tasks', 'work_experience.star_tasks'),
+                ('star_actions', 'work_experience.star_actions'),
+                ('star_results', 'work_experience.star_results'),
+            ]:
+                text = clean_text(exp.get(key))
+                if text:
+                    label = doc.add_paragraph()
+                    label.paragraph_format.space_after = Pt(0)
+                    label.add_run(f"{tr(label_key)}: ").bold = True
+                    add_markdownish_text(text)
+
+            skills = exp.get('skills') or []
+            if skills:
+                line = doc.add_paragraph()
+                line.add_run(f"{tr('skills.title')}: ").italic = True
+                line.add_run(', '.join(str(skill) for skill in skills if str(skill).strip())).italic = True
+
+    skills_by_category = cv_data.get('skills_by_category') or {}
+    if skills_by_category:
+        add_section_heading(tr('skills.title'))
+        for category_name, category_skills in skills_by_category.items():
+            names = []
+            for skill in category_skills:
+                if isinstance(skill, dict):
+                    name = clean_text(skill.get('skill_name'))
+                else:
+                    try:
+                        name = clean_text(skill['skill_name'])
+                    except Exception:
+                        name = clean_text(getattr(skill, 'skill_name', ''))
+                if name:
+                    names.append(name)
+            names = [name for name in names if name]
+            if names:
+                line = doc.add_paragraph()
+                line.add_run(f"{category_name}: ").bold = True
+                line.add_run(', '.join(names))
+                line.paragraph_format.space_after = Pt(0)
+
+    projects = cv_data.get('projects') or []
+    if projects:
+        add_section_heading(tr('projects.title'))
+        for project in projects:
+            name = clean_text(project.get('project_name'))
+            start = clean_text(project.get('start_date_display') or project.get('start_date'))
+            end = clean_text(project.get('end_date_display') or project.get('end_date'))
+            period = format_period(start, end, tr('projects.ongoing'))
+
+            heading = doc.add_paragraph()
+            heading.paragraph_format.space_before = Pt(6)
+            heading.paragraph_format.space_after = Pt(2)
+            add_bottom_border(heading, FONT_COLOR, '2')
+
+            role = clean_text(project.get('role'))
+            if role:
+                role = f" | {role}"
+            run = heading.add_run(f"{name}{role}")
+
+            run.bold = True
+            run.font.size = Pt(11)
+            if period:
+                date_run = heading.add_run(f" ({period})")
+                date_run.italic = True
+                date_run.font.size = Pt(9)
+                date_run.font.color.rgb = RGBColor(127, 140, 141)
+
+            description = clean_text(project.get('description'))
+            if description:
+                add_markdownish_text(description)
+
+            achievements = clean_text(project.get('achievements'))
+            if achievements:
+                label = doc.add_paragraph()
+                label.add_run(f"{tr('projects.achievements')}: ").bold = True
+                label.paragraph_format.space_before = Pt(2)
+                label.paragraph_format.space_after = Pt(0)
+                add_markdownish_text(achievements)
+
+            skills = [clean_text(skill) for skill in (project.get('skills') or [])]
+            skills = [skill for skill in skills if skill]
+            if skills:
+                line = doc.add_paragraph()
+                line.add_run(f"{tr('skills.title')}: ").bold = True
+                line.add_run(', '.join(skills))
+
+            project_url = clean_text(project.get('project_url'))
+            github_url = clean_text(project.get('github_url'))
+            if project_url or github_url:
+                links = []
+                if project_url:
+                    links.append(f"{tr('projects.project_url_link')}: {project_url}")
+                if github_url:
+                    links.append(f"{tr('projects.github_repo')}: {github_url}")
+
+                # doc.add_paragraph(' | '.join(links))
+
+    education = cv_data.get('education') or []
+    if education:
+        add_section_heading(tr('education.title'))
+        for edu in education:
+            degree = clean_text(edu.get('degree'))
+            field = clean_text(edu.get('field_of_study'))
+            start_year = clean_text(edu.get('start_year'))
+            end_year = clean_text(edu.get('end_year'))
+            period = format_period(start_year, end_year, tr('education.in_progress'))
+
+            heading = doc.add_paragraph()
+            heading.paragraph_format.space_before = Pt(4)
+            heading.paragraph_format.space_after = Pt(2)
+
+            institution = clean_text(edu.get('institution_name'))
+            location = clean_text(edu.get('location'))
+            if institution or location:
+                extra = f"[{institution}{', ' if institution and location else ''}{location}]"
+
+            title = degree
+            if field:
+                title = f"{title} - {field} {extra}" if title else field
+            run = heading.add_run(title)
+            run.bold = True
+            run.font.size = Pt(11)
+            if period:
+                period_run = heading.add_run(f" ({period})")
+                period_run.italic = True
+                period_run.font.size = Pt(9)
+                period_run.font.color.rgb = RGBColor(127, 140, 141)
+
+            gpa = clean_text(edu.get('gpa'))
+            honors = clean_text(edu.get('honors'))
+            if gpa:
+                line = doc.add_paragraph()
+                line.add_run(f"{tr('education.gpa')}: ").bold = True
+                line.add_run(gpa)
+            if honors:
+                line = doc.add_paragraph()
+                line.add_run(f"{tr('education.honors')}: ").bold = True
+                line.add_run(honors)
+
+            description = clean_text(edu.get('description'))
+            if description:
+                add_markdownish_text(description)
+
+    out = io.BytesIO()
+    doc.save(out)
+    out.seek(0)
+    return out.getvalue()
+
+
 @app.route('/export-cv/preview')
 @login_required
 def preview_cv():
     """Preview CV in HTML format."""
+    avg_proof = (request.args.get('avg_proof') or '').strip().lower() in {'1', 'true', 'on', 'yes'}
     conn = get_db_connection()
     consultant_id = resolve_current_consultant_id(conn)
     
@@ -3112,7 +4184,7 @@ def preview_cv():
     cv_data = get_cv_data(conn, consultant_id)
     conn.close()
     
-    return render_template('cv_template.html', **cv_data)
+    return render_template('cv_template.html', avg_proof=avg_proof, **cv_data)
 
 
 @app.route('/export-cv/download', methods=['POST'])
@@ -3120,6 +4192,7 @@ def preview_cv():
 def export_cv_download():
     """Download CV in selected format."""
     format_type = request.form.get('format', 'html')
+    avg_proof = (request.form.get('avg_proof') or '').strip().lower() in {'1', 'true', 'on', 'yes'}
     
     conn = get_db_connection()
     consultant_id = resolve_current_consultant_id(conn)
@@ -3136,121 +4209,44 @@ def export_cv_download():
 
     # Build a header-safe filename to avoid invalid Content-Disposition parsing.
     filename = ''.join(c if c.isalnum() or c in {'-', '_'} else '_' for c in raw_filename).strip('_') or 'CV_Export'
+    logo_src = Path(app.root_path, 'static', 'ibs-logo-print.png').as_uri()
 
     def build_download_response(data, mimetype, extension):
         response = Response(data, mimetype=mimetype)
         response.headers.set('Content-Disposition', 'attachment', filename=f'{filename}.{extension}')
         return response
+
+    def build_export_error_response(message):
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return Response(message, status=500, mimetype='text/plain')
+        flash(message, 'error')
+        return redirect(url_for('export_cv'))
     
     if format_type == 'html':
-        html_content = render_template('cv_template.html', **cv_data)
+        html_content = render_template('cv_template.html', avg_proof=avg_proof, **cv_data)
         return build_download_response(html_content, 'text/html', 'html')
     
     elif format_type == 'pdf':
         try:
             from weasyprint import HTML
-            html_content = render_template('cv_template.html', **cv_data)
+            html_content = render_template('cv_template.html', logo_src=logo_src, avg_proof=avg_proof, **cv_data)
             pdf = HTML(string=html_content, base_url=request.url_root).write_pdf()
             return build_download_response(pdf, 'application/pdf', 'pdf')
         except Exception as e:
-            flash(f'PDF generation failed: {str(e)}. Please install WeasyPrint dependencies or use HTML export.', 'error')
-            return redirect(url_for('export_cv'))
+            return build_export_error_response(
+                f'PDF generation failed: {str(e)}. Please install WeasyPrint dependencies or use HTML export.'
+            )
     
     elif format_type == 'docx':
         try:
-            # Generate HTML from template
-            html_content = render_template('cv_template.html', **cv_data)
-            
-            # Convert HTML to DOCX
-            from html2docx import html_to_docx
-            from io import BytesIO
-            
-            doc_io = BytesIO()
-            html_to_docx(html_content, doc_file=doc_io)
-            doc_io.seek(0)
-            
+            docx_content = build_docx_cv(cv_data, avg_proof=avg_proof)
             return build_download_response(
-                doc_io.getvalue(),
+                docx_content,
                 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
                 'docx'
             )
-            
-        except ImportError:
-            # Fallback: If html2docx is not available, use basic python-docx conversion with BeautifulSoup
-            try:
-                from docx import Document
-                from docx.enum.text import WD_ALIGN_PARAGRAPH
-                from html.parser import HTMLParser
-                from io import BytesIO
-                import re
-                
-                # Generate HTML from template
-                html_content = render_template('cv_template.html', **cv_data)
-                
-                # Simple HTML to docx conversion
-                doc = Document()
-                
-                # Parse HTML and extract text content
-                class HTMLExtractor(HTMLParser):
-                    def __init__(self):
-                        super().__init__()
-                        self.in_tag = None
-                        self.current_text = []
-                        self.current_heading_level = None
-                        
-                    def handle_starttag(self, tag, attrs):
-                        if tag in ['h1', 'h2', 'h3']:
-                            self.in_tag = tag
-                    
-                    def handle_endtag(self, tag):
-                        if tag in ['h1', 'h2', 'h3']:
-                            self.in_tag = None
-                    
-                    def handle_data(self, data):
-                        if data.strip():
-                            self.current_text.append(data.strip())
-                
-                # Extract text content and structure from HTML
-                import re
-                # Remove style tags
-                html_no_styles = re.sub(r'<style>.*?</style>', '', html_content, flags=re.DOTALL)
-                # Remove script tags
-                html_no_scripts = re.sub(r'<script>.*?</script>', '', html_no_styles, flags=re.DOTALL)
-                
-                # Simple heading detection
-                headings = re.findall(r'<h([1-3]).*?>(.*?)</h\1>', html_no_scripts, re.DOTALL)
-                paragraphs = re.findall(r'<p.*?>(.*?)</p>', html_no_scripts, re.DOTALL)
-                
-                # Add headings to document
-                for level, content in headings:
-                    level_map = {'1': 0, '2': 1, '3': 2}
-                    clean_content = re.sub(r'<[^>]+>', '', content).strip()
-                    if clean_content:
-                        doc.add_heading(clean_content, int(level_map.get(level, 1)))
-                
-                # Add paragraphs
-                for content in paragraphs:
-                    clean_content = re.sub(r'<[^>]+>', '', content).strip()
-                    if clean_content:
-                        doc.add_paragraph(clean_content)
-                
-                doc_io = BytesIO()
-                doc.save(doc_io)
-                doc_io.seek(0)
-                
-                return build_download_response(
-                    doc_io.getvalue(),
-                    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-                    'docx'
-                )
-                
-            except Exception as e:
-                flash(f'Word document generation failed: {str(e)}. Please ensure html2docx is installed: pip install html2docx', 'error')
-                return redirect(url_for('export_cv'))
-        
         except Exception as e:
-            flash(f'Word document generation failed: {str(e)}', 'error')
-            return redirect(url_for('export_cv'))
+            return build_export_error_response(f'Word document generation failed: {str(e)}')
     
     elif format_type == 'json':
         # Export as JSON (similar to export_consultant but for current consultant)
@@ -3285,6 +4281,16 @@ def export_cv_download():
             payload['personal_info'].pop('consultant_id', None)
             payload['personal_info'].pop('created_at', None)
             payload['personal_info'].pop('updated_at', None)
+            if avg_proof:
+                payload['personal_info']['email'] = ''
+                payload['personal_info']['phone'] = ''
+                payload['personal_info']['address'] = ''
+                payload['personal_info']['zip_code'] = ''
+                payload['personal_info']['state'] = ''
+                payload['personal_info']['country'] = ''
+                payload['personal_info']['linkedin_url'] = ''
+                payload['personal_info']['github_url'] = ''
+                payload['personal_info']['portfolio_url'] = ''
 
         for table, key in [
             ('work_experience', 'work_experience'),
@@ -3326,6 +4332,15 @@ def export_cv_download():
                     ''', (row['id'],)).fetchall()
                     row_data['skills'] = [s['skill_name'] for s in skills]
 
+                if table == 'certifications':
+                    skills = conn.execute('''
+                        SELECT s.skill_name 
+                        FROM skills s
+                        JOIN certification_skills cs ON s.id = cs.skill_id
+                        WHERE cs.certification_id = ?
+                    ''', (row['id'],)).fetchall()
+                    row_data['skills'] = [s['skill_name'] for s in skills]
+
                 row_data.pop('id', None)
                 row_data.pop('consultant_id', None)
                 row_data.pop('created_at', None)
@@ -3338,8 +4353,7 @@ def export_cv_download():
         
         return build_download_response(json.dumps(payload, indent=2), 'application/json', 'json')
     
-    flash('Invalid format selected', 'error')
-    return redirect(url_for('export_cv'))
+    return build_export_error_response('Invalid format selected')
 
 
 def get_cv_data(conn, consultant_id):
@@ -3385,13 +4399,24 @@ def get_cv_data(conn, consultant_id):
             ORDER BY s.skill_name
         ''', (row['id'],)).fetchall()
         exp_data['skills'] = [s['skill_name'] for s in skills]
+        exp_data['start_date_display'] = format_year_month(exp_data.get('start_date'))
+        exp_data['end_date_display'] = format_year_month(exp_data.get('end_date'))
         work_experiences.append(exp_data)
     
     # Education
-    education = conn.execute(
+    education_rows = conn.execute(
         'SELECT * FROM education WHERE consultant_id = ? ORDER BY start_date IS NULL, start_date DESC',
         (consultant_id,)
     ).fetchall()
+
+    education = []
+    for row in education_rows:
+        edu_data = dict(row)
+        start_date = str(edu_data.get('start_date') or '').strip()
+        end_date = str(edu_data.get('end_date') or '').strip()
+        edu_data['start_year'] = start_date[:4] if len(start_date) >= 4 else ''
+        edu_data['end_year'] = end_date[:4] if len(end_date) >= 4 else ''
+        education.append(edu_data)
     
     # Certifications
     certifications_raw = conn.execute(
@@ -3407,6 +4432,16 @@ def get_cv_data(conn, consultant_id):
             issue_date_str = str(cert_dict['issue_date'])
             if issue_date_str and len(issue_date_str) >= 4:
                 cert_dict['issue_year'] = issue_date_str[:4]
+        cert_dict['skills'] = [row['skill_name'] for row in conn.execute(
+            '''
+            SELECT s.skill_name
+            FROM skills s
+            JOIN certification_skills cs ON s.id = cs.skill_id
+            WHERE cs.certification_id = ?
+            ORDER BY s.skill_name
+            ''',
+            (cert['id'],)
+        ).fetchall()]
         certifications.append(cert_dict)
     
     # Skills grouped by category
@@ -3459,6 +4494,8 @@ def get_cv_data(conn, consultant_id):
             ORDER BY s.skill_name
         ''', (row['id'],)).fetchall()
         project_data['skills'] = [s['skill_name'] for s in skills]
+        project_data['start_date_display'] = format_year_month(project_data.get('start_date'))
+        project_data['end_date_display'] = format_year_month(project_data.get('end_date'))
         projects.append(project_data)
     
     return {

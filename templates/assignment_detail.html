@@ -1,0 +1,184 @@
+{% extends "base.html" %}
+
+{% block title %}{{ t.assignments.detail_title }} - {{ t.app_name }}{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h2>{{ t.assignments.detail_title }} #{{ assignment['id'] }}</h2>
+    <a href="{{ url_for('assignments') }}" class="btn btn-secondary">{{ t.assignments.back_to_assignments_button }}</a>
+</div>
+
+<div class="admin-container">
+    <div class="admin-section">
+        <div class="form-section">
+            <h3>{{ assignment['title'] or t.assignments.untitled_assignment }}</h3>
+
+            <div class="detail-grid two-col">
+                <div><strong>{{ t.assignments.start_date_label }}:</strong> {{ assignment['start_date'] or '-' }}</div>
+                <div>
+                    <strong>{{ t.assignments.deadline_label }}:</strong> {{ assignment['deadline'] or '-' }}
+                    {% if assignment['deadline_estimated'] %}
+                    <span class="tag">{{ t.assignments.estimated_label }}</span>
+                    {% endif %}
+                </div>
+                <div><strong>{{ t.assignments.hot_seat_label }}:</strong> {{ assignment['hot_seat'] or '-' }}</div>
+                <div><strong>{{ t.assignments.reference_id_label }}:</strong> {{ assignment['reference_id'] or '-' }}</div>
+                <div><strong>{{ t.assignments.ai_provider_label }}:</strong> {{ assignment['parse_provider'] or '-' }}</div>
+                <div><strong>{{ t.assignments.hourly_rate_min_label }}:</strong> {{ assignment['hourly_rate_min'] if assignment['hourly_rate_min'] is not none else '-' }}</div>
+                <div><strong>{{ t.assignments.hourly_rate_max_label }}:</strong> {{ assignment['hourly_rate_max'] if assignment['hourly_rate_max'] is not none else '-' }}</div>
+                <div><strong>{{ t.assignments.hourly_rate_label }}:</strong> {{ assignment['hourly_rate'] if assignment['hourly_rate'] is not none else '-' }}</div>
+                <div><strong>{{ t.assignments.created_at_label }}:</strong> {{ assignment['created_at'] or '-' }}</div>
+            </div>
+
+            <h4>{{ t.assignments.description_label }}</h4>
+            <p class="detail-paragraph">{{ assignment['description'] or '-' }}</p>
+
+            <h4>{{ t.assignments.contact_title }}</h4>
+            <div class="detail-grid three-col">
+                <div><strong>{{ t.assignments.recruiter_name_label }}:</strong> {{ assignment['recruiter_name'] or '-' }}</div>
+                <div><strong>{{ t.assignments.recruiter_email_label }}:</strong> {{ assignment['recruiter_email'] or '-' }}</div>
+                <div><strong>{{ t.assignments.recruiter_phone_label }}:</strong> {{ assignment['recruiter_phone'] or '-' }}</div>
+            </div>
+
+            <div class="detail-grid three-col criteria-grid">
+                <div>
+                    <h4>{{ t.assignments.knock_out_criteria_label }}</h4>
+                    {% if assignment['knock_out_criteria_list'] %}
+                    <ul>
+                        {% for item in assignment['knock_out_criteria_list'] %}
+                        <li>{{ item }}</li>
+                        {% endfor %}
+                    </ul>
+                    {% else %}
+                    <p class="empty-state-text">-</p>
+                    {% endif %}
+                </div>
+                <div>
+                    <h4>{{ t.assignments.nice_to_have_criteria_label }}</h4>
+                    {% if assignment['nice_to_have_criteria_list'] %}
+                    <ul>
+                        {% for item in assignment['nice_to_have_criteria_list'] %}
+                        <li>{{ item }}</li>
+                        {% endfor %}
+                    </ul>
+                    {% else %}
+                    <p class="empty-state-text">-</p>
+                    {% endif %}
+                </div>
+                <div>
+                    <h4>{{ t.assignments.competenties_label }}</h4>
+                    {% if assignment['competenties_list'] %}
+                    <ul>
+                        {% for item in assignment['competenties_list'] %}
+                        <li>{{ item }}</li>
+                        {% endfor %}
+                    </ul>
+                    {% else %}
+                    <p class="empty-state-text">-</p>
+                    {% endif %}
+                </div>
+            </div>
+
+            <details class="collapsible-block">
+                <summary>{{ t.assignments.source_text_label }}</summary>
+                <pre class="result-output">{{ assignment['source_text'] or '' }}</pre>
+            </details>
+
+            {% if assignment['raw_ai_response'] %}
+            <details class="collapsible-block">
+                <summary>{{ t.assignments.raw_ai_output_title }}</summary>
+                <pre class="result-output">{{ assignment['raw_ai_response'] }}</pre>
+            </details>
+            {% endif %}
+
+            <div class="form-actions">
+                <a href="{{ url_for('assignment_match', assignment_id=assignment['id']) }}" class="btn btn-primary">{{ t.assignments.match_now_button }}</a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.admin-container {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+.admin-section {
+    background: var(--card-background);
+    border-radius: 8px;
+    padding: 1.5rem;
+    box-shadow: var(--shadow);
+}
+
+.detail-grid {
+    display: grid;
+    gap: 0.8rem;
+    margin-bottom: 1rem;
+}
+
+.detail-grid.two-col {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.detail-grid.three-col {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.detail-paragraph {
+    white-space: pre-wrap;
+    margin: 0 0 1rem 0;
+}
+
+.criteria-grid {
+    margin-top: 1rem;
+}
+
+.result-output {
+    margin: 0;
+    padding: 1rem;
+    background: var(--background);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-family: "Courier New", monospace;
+    font-size: 0.875rem;
+}
+
+.collapsible-block {
+    margin-top: 1rem;
+}
+
+.collapsible-block summary {
+    cursor: pointer;
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+}
+
+.collapsible-block[open] summary {
+    margin-bottom: 0.75rem;
+}
+
+.tag {
+    display: inline-block;
+    margin-left: 0.4rem;
+    padding: 0.1rem 0.4rem;
+    border-radius: 999px;
+    border: 1px solid var(--border-color);
+    font-size: 0.75rem;
+}
+
+.empty-state-text {
+    color: var(--text-secondary);
+}
+
+@media (max-width: 980px) {
+    .detail-grid.two-col,
+    .detail-grid.three-col {
+        grid-template-columns: 1fr;
+    }
+}
+</style>
+{% endblock %}

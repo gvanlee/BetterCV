@@ -11,7 +11,7 @@
 </div>
 
 <div class="card">
-    <form method="POST" action="{{ url_for('export_cv_download') }}">
+    <form id="exportCvForm" method="POST" action="{{ url_for('export_cv_download') }}">
         <div class="form-group">
             <label for="format">{{ t.export_cv.format_label }}</label>
             <select id="format" name="format" required>
@@ -23,9 +23,26 @@
             <small>{{ t.export_cv.format_help }}</small>
         </div>
 
+        <div class="form-group">
+            <label for="avg_proof" class="checkbox-label">
+                <input id="avg_proof" name="avg_proof" type="checkbox" value="1">
+                {{ t.export_cv.avg_proof_label }}
+            </label>
+            <small>{{ t.export_cv.avg_proof_help }}</small>
+        </div>
+
         <div class="form-actions">
-            <button type="submit" class="btn btn-primary">{{ t.export_cv.export_button }}</button>
-            <a href="{{ url_for('preview_cv') }}" class="btn btn-secondary" target="_blank">{{ t.export_cv.preview_button }}</a>
+            <button type="submit" class="btn btn-primary" id="export_cv_button">
+                <span class="export-btn-label">{{ t.export_cv.export_button }}</span>
+                <span class="export-btn-spinner" aria-hidden="true"></span>
+            </button>
+            <a
+                id="preview_cv_link"
+                href="{{ url_for('preview_cv') }}"
+                data-base-href="{{ url_for('preview_cv') }}"
+                class="btn btn-secondary"
+                target="_blank"
+            >{{ t.export_cv.preview_button }}</a>
             <a href="{{ url_for('index') }}" class="btn btn-secondary">{{ t.buttons.cancel }}</a>
         </div>
     </form>
@@ -36,5 +53,155 @@
     {{ t.export_cv.no_data_warning }}
 </div>
 {% endif %}
+
+<script>
+    (function () {
+        const avgProofCheckbox = document.getElementById('avg_proof');
+        const previewLink = document.getElementById('preview_cv_link');
+        const exportForm = document.getElementById('exportCvForm');
+        const exportButton = document.getElementById('export_cv_button');
+        const exportButtonLabel = exportButton ? exportButton.querySelector('.export-btn-label') : null;
+
+        if (!avgProofCheckbox || !previewLink) {
+            return;
+        }
+
+        const baseHref = previewLink.dataset.baseHref || previewLink.getAttribute('href') || '';
+
+        const syncPreviewHref = () => {
+            previewLink.setAttribute(
+                'href',
+                avgProofCheckbox.checked ? `${baseHref}?avg_proof=1` : baseHref
+            );
+        };
+
+        avgProofCheckbox.addEventListener('change', syncPreviewHref);
+        syncPreviewHref();
+
+        const setExportLoading = (isLoading) => {
+            if (!exportButton) {
+                return;
+            }
+
+            exportButton.disabled = isLoading;
+            exportButton.classList.toggle('is-loading', isLoading);
+            if (exportButtonLabel) {
+                exportButtonLabel.textContent = isLoading
+                    ? "{{ t.export_cv.generating }}"
+                    : "{{ t.export_cv.export_button }}";
+            }
+        };
+
+        const isExpectedContentType = (formatValue, contentType) => {
+            const type = (contentType || '').toLowerCase();
+            const expectedByFormat = {
+                html: 'text/html',
+                pdf: 'application/pdf',
+                docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                json: 'application/json',
+            };
+            const expected = expectedByFormat[formatValue] || '';
+            return expected ? type.includes(expected) : true;
+        };
+
+        const parseFilenameFromDisposition = (disposition) => {
+            if (!disposition) {
+                return '';
+            }
+
+            const utf8Match = disposition.match(/filename\*=UTF-8''([^;]+)/i);
+            if (utf8Match && utf8Match[1]) {
+                try {
+                    return decodeURIComponent(utf8Match[1]).replace(/"/g, '');
+                } catch (_) {
+                    return utf8Match[1].replace(/"/g, '');
+                }
+            }
+
+            const plainMatch = disposition.match(/filename="?([^";]+)"?/i);
+            return plainMatch && plainMatch[1] ? plainMatch[1] : '';
+        };
+
+        if (exportForm) {
+            exportForm.addEventListener('submit', async (event) => {
+                event.preventDefault();
+                setExportLoading(true);
+
+                try {
+                    const formData = new FormData(exportForm);
+                    const selectedFormat = (formData.get('format') || 'bin').toString();
+                    const response = await fetch(exportForm.action, {
+                        method: 'POST',
+                        body: formData,
+                        headers: {
+                            'X-Requested-With': 'XMLHttpRequest'
+                        }
+                    });
+
+                    if (!response.ok) {
+                        const errorText = (await response.text()) || `Export failed with status ${response.status}`;
+                        throw new Error(errorText);
+                    }
+
+                    const contentType = response.headers.get('Content-Type') || '';
+                    if (!isExpectedContentType(selectedFormat, contentType)) {
+                        const errorText = await response.text();
+                        throw new Error(errorText || 'Export response did not contain the requested file format.');
+                    }
+
+                    const blob = await response.blob();
+                    const disposition = response.headers.get('Content-Disposition') || '';
+                    const fallbackExt = selectedFormat;
+                    const downloadName = parseFilenameFromDisposition(disposition) || `cv_export.${fallbackExt}`;
+
+                    const downloadUrl = URL.createObjectURL(blob);
+                    const downloadLink = document.createElement('a');
+                    downloadLink.href = downloadUrl;
+                    downloadLink.download = downloadName;
+                    downloadLink.style.display = 'none';
+                    document.body.appendChild(downloadLink);
+                    downloadLink.click();
+                    downloadLink.remove();
+                    URL.revokeObjectURL(downloadUrl);
+                } catch (error) {
+                    console.error('CV export failed', error);
+                    alert(error && error.message ? error.message : 'CV export failed. Please try again.');
+                } finally {
+                    setExportLoading(false);
+                }
+            });
+        }
+    })();
+</script>
+
+<style>
+    #export_cv_button {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+
+    .export-btn-spinner {
+        width: 0;
+        height: 0;
+        opacity: 0;
+        border: 2px solid rgba(255, 255, 255, 0.4);
+        border-top-color: #fff;
+        border-radius: 50%;
+        transition: opacity 0.15s ease;
+    }
+
+    #export_cv_button.is-loading .export-btn-spinner {
+        width: 14px;
+        height: 14px;
+        opacity: 1;
+        animation: exportSpin 0.75s linear infinite;
+    }
+
+    @keyframes exportSpin {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(360deg); }
+    }
+</style>
 
 {% endblock %}

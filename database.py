@@ -246,6 +246,17 @@ def init_database():
             FOREIGN KEY (skill_id) REFERENCES skills(id) ON DELETE CASCADE
         )
     ''')
+
+    # Certification-Skills Link Table (Many-to-Many)
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS certification_skills (
+            certification_id INTEGER,
+            skill_id INTEGER,
+            PRIMARY KEY (certification_id, skill_id),
+            FOREIGN KEY (certification_id) REFERENCES certifications(id) ON DELETE CASCADE,
+            FOREIGN KEY (skill_id) REFERENCES skills(id) ON DELETE CASCADE
+        )
+    ''')
     
     # Projects Table
     cursor.execute('''
@@ -281,6 +292,36 @@ def init_database():
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     ''')
+
+    # Assignments Table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS assignments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT NOT NULL DEFAULT '',
+            description TEXT NOT NULL DEFAULT '',
+            reference_id TEXT,
+            source_text TEXT NOT NULL,
+            hot_seat TEXT,
+            hourly_rate_min REAL,
+            hourly_rate_max REAL,
+            hourly_rate REAL,
+            knock_out_criteria TEXT NOT NULL DEFAULT '[]',
+            nice_to_have_criteria TEXT NOT NULL DEFAULT '[]',
+            competenties TEXT NOT NULL DEFAULT '[]',
+            deadline DATE,
+            deadline_estimated BOOLEAN NOT NULL DEFAULT 0,
+            start_date DATE,
+            recruiter_name TEXT,
+            recruiter_email TEXT,
+            recruiter_phone TEXT,
+            parse_provider TEXT,
+            raw_ai_response TEXT,
+            created_by_user_id INTEGER,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (created_by_user_id) REFERENCES users(id)
+        )
+    ''')
     
     def ensure_column(table_name, column_name, column_definition):
         columns = conn.execute(f"PRAGMA table_info({table_name})").fetchall()
@@ -312,6 +353,28 @@ def init_database():
         ensure_column(table, 'consultant_id', 'INTEGER')
 
     ensure_column('personal_info', 'initials', 'TEXT')
+
+    # Migration: ensure assignment columns exist for older databases
+    ensure_column('assignments', 'title', "TEXT NOT NULL DEFAULT ''")
+    ensure_column('assignments', 'description', "TEXT NOT NULL DEFAULT ''")
+    ensure_column('assignments', 'source_text', "TEXT NOT NULL DEFAULT ''")
+    ensure_column('assignments', 'reference_id', 'TEXT')
+    ensure_column('assignments', 'hot_seat', 'TEXT')
+    ensure_column('assignments', 'hourly_rate_min', 'REAL')
+    ensure_column('assignments', 'hourly_rate_max', 'REAL')
+    ensure_column('assignments', 'hourly_rate', 'REAL')
+    ensure_column('assignments', 'knock_out_criteria', "TEXT NOT NULL DEFAULT '[]'")
+    ensure_column('assignments', 'nice_to_have_criteria', "TEXT NOT NULL DEFAULT '[]'")
+    ensure_column('assignments', 'competenties', "TEXT NOT NULL DEFAULT '[]'")
+    ensure_column('assignments', 'deadline', 'DATE')
+    ensure_column('assignments', 'deadline_estimated', 'BOOLEAN NOT NULL DEFAULT 0')
+    ensure_column('assignments', 'start_date', 'DATE')
+    ensure_column('assignments', 'recruiter_name', 'TEXT')
+    ensure_column('assignments', 'recruiter_email', 'TEXT')
+    ensure_column('assignments', 'recruiter_phone', 'TEXT')
+    ensure_column('assignments', 'parse_provider', 'TEXT')
+    ensure_column('assignments', 'raw_ai_response', 'TEXT')
+    ensure_column('assignments', 'created_by_user_id', 'INTEGER')
 
     for table in [
         'work_experience',

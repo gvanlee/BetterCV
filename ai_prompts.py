@@ -117,25 +117,37 @@ CV Text:
 
 
 ASSIGNMENT_MATCH_PROMPT_TEMPLATE = """
-Je bent een coorporate recruiter, je bent voor een opdrachtgever op zoek naar de 
-    perfecte kandidaat. Bijgevoegd is de data uit een aantal CV's en een opdrachtbeschrijving. 
+You are a corporate recruiter; you are looking for the perfect candidate for a client. 
+  Attached are data from a number of CVs and a job description.
 
-Je bent gespecialiseerd in exacte matching. Analyseer de geleverde vacaturetekst grondig en 
-    extraheer alle harde eisen (must-haves waar zonder niet wordt uitgenodigd), 
-    wenselijke competenties, ervaring (nice-to-have) en soft skills/competenties 
-    die expliciet of impliciet genoemd worden. Gebruik hiervoor uitsluitend de vacaturetekst.
+You specialize in exact matching. Thoroughly analyze the provided job description 
+  and extract all hard requirements (must-haves without which candidates will not 
+  be invited), desirable competencies, experience (nice-to-have), and soft 
+  skills/competencies that are explicitly or implicitly mentioned. Use the job 
+  description exclusively for this. 
 
-Let op: soms staat er in een opdracht dat het gaat om een warme stoel, met andere woorden: 
-    de opdracht staat niet echt uit voor selectie, maar de huidige invulling wordt gehandhaafd. 
-    In zo'n geval mag je de analyse meteen stoppen en dit melden in de summary.
+Note: sometimes a job description states that it concerns a "hot seat"; in other words, 
+  the assignment is not actually open for selection, but the current staffing is being 
+  maintained. In such a case, you may stop the analysis immediately and mention this 
+  in the summary.
 
-Bekijk vervolgens de CV's, geef als output een tabel met daarin de naam van de kandidaat, 
-het percentage slagingskans en in 1 alinea waarom dat zo is. Sorteer de tabel van 
-meeste kans naar minste kans.
+Next, review the CVs and provide a table as output containing the candidate's name, 
+  the success rate percentage, and in one paragraph the reason why this is the case. 
+  Sort the table from highest chance to lowest chance. In the event that this is not 
+  clearly evident from the CV, the candidate is employed by Isatis Business Solutions. 
+  Therefore, this does not involve a self-employed person or freelancer. 
+  
+Be exact in your matching. If a requirement is not explicitly mentioned in the CV, do 
+  not assume it is met but rather consider it as a gap. If a knock-out criterion is not 
+  met, the candidate should be ranked lower than any candidate who meets all knock-out 
+  criteria, regardless of how many desirable competencies they have.
+
+Show a maximum of 5 candidates; if there are more than 5 candidates, show only the top 5.
 
 Return format:
-- Alleen valide JSON (no markdown, no extra text).
-- Gebruik deze exacte top-level structuur:
+
+- Only valid JSON (no markdown, no extra text).
+- Use this exact top-level structure:
 
 {{
   "summary": "Short overall summary of the best fit and notable trade-offs",
@@ -161,6 +173,71 @@ Candidate data (JSON array):
 """.strip()
 
 
+ASSIGNMENT_PARSE_PROMPT_TEMPLATE = """
+Analyze the assignment text below and return only valid JSON using this exact structure:
+
+{{
+  "assignment": {{
+    "title": "string",
+    "description": "string",
+    "location": "string",
+    "reference_id": "string",
+    "hot_seat": "bool",
+    "hot_seat_context": "string",
+    "hourly_rate_min": "number",
+    "hourly_rate_max": "number",
+    "hourly_rate": "number",
+    "knock_out_criteria": ["string"],
+    "nice_to_have_criteria": ["string"],
+    "competenties": ["string"],
+    "deadline": "YYYY-MM-DD",
+    "deadline_estimated": "bool",
+    "start_date": "YYYY-MM-DD"
+  }},
+  "contact": {{
+    "recruiter_name": "string",
+    "recruiter_email": "string",
+    "recruiter_phone": "string"
+  }}
+}}
+
+Prompt:
+    You are an experienced recruiter specializing in exact matching. Your task is to convert the
+    assignment description below into a structured JSON file.
+
+    ### Instructions:
+    1. Analyse this assignment text thoroughly, do not make up things, do not assume information 
+      that is not explicitly stated. Set the description field to the assignment description 
+      (leave out information that is extracted to other fields), set the location field to 
+      information about the company where the assignment will be performed. Keep as much of the 
+      original wording as possible when filling in the fields, do not rephrase or translate the 
+      detected information, keep it as in the source text.
+    2. Extract all hard requirements (must-haves), desirable competencies (nice-to-haves), 
+      and other soft skills or competencies that are explicitly mentioned.
+    3. If there is a "hot seat" situation (the assignment is not really open for selection, but 
+      the current placement will be maintained), mention this in the "hot_seat_context" field, 
+      set the hot_seat field to true in this case. Otherwise, set the hot_seat field to false 
+      and leave the "hot_seat_context" field empty.
+    4. Fill in the rate fields numerically. If a range is mentioned, provide the full range using 
+      minumum and maxium rates. If no rate information is available, leave the fields empty.
+    5. Fill in the "deadline" field as a date string in the format `YYYY-MM-DD`.
+      If deadline is missing and start_date is present, set deadline to one week before start_date 
+      and set deadline_estimated to true. Use false for deadline_estimated when deadline is explicitly 
+      found. If both deadline and start_date are missing, set deadline to empty string and deadline_estimated 
+      to true.
+    6. Extract contact information for the recruiter if mentioned, otherwise leave those fields empty.
+    7. Return only JSON, no markdown and no explanatory text. 
+    8. Keep extracted language as in source text.
+    9. Use empty string for unknown text fields.
+   10. Use empty arrays for unknown list fields.
+   11. Use empty string for unknown numeric fields.
+   12. Normalize detected dates to YYYY-MM-DD.
+
+Assignment text:
+{assignment_text}
+""".strip()
+
+
 def get_cv_parse_prompt(cv_text):
     return CV_PARSE_PROMPT_TEMPLATE.format(cv_text=cv_text)
 
@@ -170,3 +247,7 @@ def get_assignment_match_prompt(assignment_description, consultants_json):
         assignment_description=assignment_description,
         consultants_json=consultants_json
     )
+
+
+def get_assignment_parse_prompt(assignment_text):
+  return ASSIGNMENT_PARSE_PROMPT_TEMPLATE.format(assignment_text=assignment_text)

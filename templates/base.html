@@ -19,14 +19,30 @@
             <ul class="nav-menu">
                 {% if current_user.is_authenticated %}
                 <li><a href="{{ url_for('index') }}">{{ t.nav.home }}</a></li>
-                <li><a href="{{ url_for('view_personal_info') }}">{{ t.nav.personal_info }}</a></li>
-                <li><a href="{{ url_for('view_work_experience') }}">{{ t.nav.work_experience }}</a></li>
-                <li><a href="{{ url_for('view_education') }}">{{ t.nav.education }}</a></li>
-                <li><a href="{{ url_for('view_certifications') }}">{{ t.nav.certifications }}</a></li>
-                <li><a href="{{ url_for('view_skills') }}">{{ t.nav.skills }}</a></li>
-                <li><a href="{{ url_for('view_projects') }}">{{ t.nav.projects }}</a></li>
+                <li class="nav-dropdown">
+                    <details>
+                        <summary>{{ t.nav.cv_sections }}</summary>
+                        <ul class="nav-dropdown-menu">
+                            <li><a href="{{ url_for('view_personal_info') }}">{{ t.nav.personal_info }}</a></li>
+                            <li><a href="{{ url_for('view_work_experience') }}">{{ t.nav.work_experience }}</a></li>
+                            <li><a href="{{ url_for('view_education') }}">{{ t.nav.education }}</a></li>
+                            <li><a href="{{ url_for('view_certifications') }}">{{ t.nav.certifications }}</a></li>
+                            <li><a href="{{ url_for('view_skills') }}">{{ t.nav.skills }}</a></li>
+                            <li><a href="{{ url_for('view_projects') }}">{{ t.nav.projects }}</a></li>
+                        </ul>
+                    </details>
+                </li>
+                <li><a href="{{ url_for('assignment_match') }}">{{ t.nav.assignment_match }}</a></li>
                 {% if current_user.is_admin() %}
-                <li><a href="{{ url_for('admin_dashboard') }}">{{ t.nav.admin }}</a></li>
+                <li class="nav-dropdown">
+                    <details>
+                        <summary>{{ t.nav.admin }}</summary>
+                        <ul class="nav-dropdown-menu">
+                            <li><a href="{{ url_for('assignments') }}">{{ t.nav.assignments }}</a></li>
+                            <li><a href="{{ url_for('admin_dashboard') }}">{{ t.nav.admin }}</a></li>
+                        </ul>
+                    </details>
+                </li>
                 {% endif %}
                 <li class="user-info">
                     <a href="{{ url_for('logout') }}" class="btn-logout" aria-label="{{ t.auth.logout }}" title="{{ t.auth.logout }}: {{ current_user.email }}">
@@ -36,11 +52,11 @@
                 {% endif %}
 
                 <li class="language-selector">
-                    <a href="{{ url_for('set_language', lang='en') }}" class="language-flag {% if current_lang == 'en' %}is-active{% endif %}" aria-label="English" title="English">
-                        <img src="{{ url_for('static', filename='flags/gb.svg') }}" alt="English">
+                    <a href="{{ url_for('set_language', lang='en') }}" class="language-flag {% if current_lang == 'en' %}is-active{% endif %}" aria-label="{{ t.languages.en }}" title="{{ t.languages.en }}">
+                        <img src="{{ url_for('static', filename='flags/gb.svg') }}" alt="{{ t.languages.en }}">
                     </a>
-                    <a href="{{ url_for('set_language', lang='nl') }}" class="language-flag {% if current_lang == 'nl' %}is-active{% endif %}" aria-label="Nederlands" title="Nederlands">
-                        <img src="{{ url_for('static', filename='flags/nl.svg') }}" alt="Nederlands">
+                    <a href="{{ url_for('set_language', lang='nl') }}" class="language-flag {% if current_lang == 'nl' %}is-active{% endif %}" aria-label="{{ t.languages.nl }}" title="{{ t.languages.nl }}">
+                        <img src="{{ url_for('static', filename='flags/nl.svg') }}" alt="{{ t.languages.nl }}">
                     </a>
                 </li>
             </ul>

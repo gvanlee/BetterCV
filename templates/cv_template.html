@@ -33,7 +33,7 @@
         h2 {
             color: #2c3e50;
             font-size: 1.4em;
-            margin-top: 1.5em;
+            margin-top: 0.6em;
             margin-bottom: 0.5em;
             border-bottom: 2px solid #f5af02;
             padding-bottom: 0.2em;
@@ -91,7 +91,7 @@
         }
         
         .section {
-            margin-bottom: 2em;
+            margin-bottom: 1em;
         }
         
         .entry {
@@ -170,9 +170,7 @@
         }
         
         .skill-list {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 0.5em;
+            color: #333;
         }
         
         ul {
@@ -191,11 +189,19 @@
             }
             
             .section {
-                page-break-inside: avoid;
+                page-break-inside: auto;
+                break-inside: auto;
+            }
+
+            .entry,
+            .experience-section {
+                page-break-inside: auto;
+                break-inside: auto;
             }
             
             h2 {
                 page-break-after: avoid;
+                break-after: avoid-page;
             }
         }
     </style>
@@ -207,16 +213,18 @@
             {% if personal_info %}
             <h1>{{ personal_info.first_name }} {{ personal_info.last_name }}</h1>
             <div class="contact-info">
-                {% if personal_info.email %}<p>{{ personal_info.email }}</p>{% endif %}
-                {% if personal_info.phone %}<p>{{ personal_info.phone }}</p>{% endif %}
-                {% if personal_info.address or personal_info.city or personal_info.country %}
+                {% if not avg_proof and personal_info.email %}<p>{{ personal_info.email }}</p>{% endif %}
+                {% if not avg_proof and personal_info.phone %}<p>{{ personal_info.phone }}</p>{% endif %}
+                {% if avg_proof %}
+                {% if personal_info.city %}<p>{{ personal_info.city }}</p>{% endif %}
+                {% elif personal_info.address or personal_info.city or personal_info.country %}
                 <p>
                     {% if personal_info.address %}{{ personal_info.address }}{% endif %}{% if personal_info.city %}{% if personal_info.address %}, {% endif %}
                     {% if personal_info.zip_code %} {{ personal_info.zip_code }}{% endif %}
                     {{ personal_info.city }}{% endif %}{% if personal_info.state %} ({{ personal_info.state }}){% endif %}{% if personal_info.country %}{% if personal_info.city or personal_info.address %}, {% endif %}{{ personal_info.country }}{% endif %}
                 </p>
                 {% endif %}
-                {% if personal_info.linkedin_url or personal_info.github_url or personal_info.portfolio_url %}
+                {% if not avg_proof and (personal_info.linkedin_url or personal_info.github_url or personal_info.portfolio_url) %}
                 <p>
                     <br>
                     {% if personal_info.linkedin_url %}LinkedIn: {{ personal_info.linkedin_url }}<br>{% endif %}
@@ -227,9 +235,11 @@
             </div>
             {% endif %}
         </div>
+        {% if not avg_proof %}
         <div class="header-logo">
-            <img src="{{ url_for('static', filename='ibs-logo-print.png') }}" alt="{{ t.app_name }}">
+            <img src="{{ logo_src or url_for('static', filename='ibs-logo-print.png') }}" alt="{{ t.app_name }}">
         </div>
+        {% endif %}
     </div>
 
     <!-- Professional Summary -->
@@ -240,60 +250,35 @@
     </div>
     {% endif %}
 
-    <!-- Education -->
-    {% if education %}
-    <div class="section">
-        <h2>{{ t.education.title }}</h2>
-        {% for edu in education %}
-        <div class="entry">
-            <div class="entry-header">
-                <h3 class="entry-title">
-                    {{ edu.degree }}{% if edu.field_of_study %} - {{ edu.field_of_study }}{% endif %}
-                    <span class="entry-date">
-                        {% if edu.start_date %}&nbsp;({{ edu.start_date }} - {% endif %}{{ edu.end_date or t.education.in_progress }}{% if edu.start_date %}){% endif %}
-                    </span>
-                </h3>
-                <div class="entry-subtitle">
-                    {{ edu.institution_name }}{% if edu.location %}, {{ edu.location }}{% endif %}
-                </div>
-            </div>
-            {% if edu.gpa or edu.honors %}
-            <div class="description">
-                {% if edu.gpa %}<p><strong>{{ t.education.gpa }}:</strong> {{ edu.gpa }}</p>{% endif %}
-                {% if edu.honors %}<p><strong>{{ t.education.honors }}:</strong> {{ edu.honors }}</p>{% endif %}
-            </div>
-            {% endif %}
-            {% if edu.description %}
-            <div class="description">{{ edu.description|format_markdown|safe }}</div>
-            {% endif %}
-        </div>
-        {% endfor %}
-    </div>
-    {% endif %}
-
     <!-- Certifications -->
     {% if certifications %}
     <div class="section">
         <h2>{{ t.certifications.title }}</h2>
-        {% for cert in certifications %}
-        <div class="entry">
-            <div class="description">
-                {{ cert.certification_name }}: {{ cert.issuing_organization }} <strong>({{ cert.issue_year }})</strong>
-                {% if cert.expiration_date %}
-                    <div class="entry-date">{{ t.certifications.expires }}: {{ cert.expiration_date }}</div>
+        <ul>
+            {% for cert in certifications %}
+            <li class="entry">
+                <div class="description">
+                    {{ cert.certification_name }}{% if cert.issuing_organization %}: {{ cert.issuing_organization }}{% endif %}
+                    {% if cert.issue_year %}<strong>({{ cert.issue_year }})</strong>{% endif %}
+                    {% if cert.expiration_date %}
+                        <div class="entry-date">{{ t.certifications.expires }}: {{ cert.expiration_date }}</div>
+                    {% endif %}
+                </div>
+                {% if cert.credential_id %}
+                <div class="description"><strong>{{ t.certifications.credential_id }}:</strong> {{ cert.credential_id }}</div>
                 {% endif %}
-            </div>
-            {% if cert.credential_id %}
-            <div class="description"><strong>{{ t.certifications.credential_id }}:</strong> {{ cert.credential_id }}</div>
-            {% endif %}
-            {% if cert.credential_url %}
-            <div class="description"><a href="{{ cert.credential_url }}">{{ t.certifications.view_credential }}</a></div>
-            {% endif %}
-            {% if cert.description %}
-            <div class="description">{{ cert.description|format_markdown|safe }}</div>
-            {% endif %}
-        </div>
-        {% endfor %}
+                {% if cert.credential_url %}
+                <div class="description"><a href="{{ cert.credential_url }}">{{ t.certifications.view_credential }}</a></div>
+                {% endif %}
+                {% if cert.skills %}
+                <div class="description"><i>{{ t.work_experience.relevant_skills }}: {{ cert.skills|join(', ') }}</i></div>
+                {% endif %}
+                {% if cert.description %}
+                <div class="description">{{ cert.description|format_markdown|safe }}</div>
+                {% endif %}
+            </li>
+            {% endfor %}
+        </ul>
     </div>
     {% endif %}
 
@@ -306,7 +291,7 @@
             <div class="entry-header">
                 <h3 class="entry-title">{{ exp.company_name }} | {{ exp.position_title }}
                     <span class="entry-date">
-                        &nbsp;({{ exp.start_date }} - {% if exp.is_current %}{{ t.work_experience.present }}{% else %}{{ exp.end_date or t.common.na }}{% endif %})
+                        &nbsp;({{ exp.start_date_display or exp.start_date }} - {% if exp.is_current %}{{ t.work_experience.present }}{% else %}{{ exp.end_date_display or exp.end_date or t.common.na }}{% endif %})
                     </span>
                 </h3>
             </div>
@@ -342,16 +327,17 @@
     {% if skills_by_category %}
     <div class="section">
         <h2>{{ t.skills.title }}</h2>
-        {% for category_name, category_skills in skills_by_category.items() %}
-        <div class="skill-category">
-            <div class="skill-category-title">{{ category_name }}</div>
-            <div class="skill-list">
+
+        <ul class="">
+            {% for category_name, category_skills in skills_by_category.items() %}
+            <li class="">
+                <strong>{{ category_name }}:</strong>
                 {% for skill in category_skills %}
-                <span class="skill-item">{{ skill.skill_name }}</span>
+                {{ skill.skill_name }}{% if not loop.last %}, {% endif %}
                 {% endfor %}
-            </div>
-        </div>
-        {% endfor %}
+            </li>
+            {% endfor %}
+        </ul>
     </div>
     {% endif %}
 
@@ -365,7 +351,7 @@
                 <h3 class="entry-title">
                     {{ project.project_name }}
                     <span class="entry-date">
-                        &nbsp;({% if project.start_date %}{{ project.start_date }} - {% endif %}{{ project.end_date or t.projects.ongoing }}{% if project.start_date %}){% endif %}
+                        &nbsp;({% if project.start_date %}{{ project.start_date_display or project.start_date }} - {% endif %}{{ project.end_date_display or project.end_date or t.projects.ongoing }}{% if project.start_date %}){% endif %}
                     </span>
                 </h3>
                 {% if project.role %}<div class="entry-subtitle">{{ project.role }}</div>{% endif %}
@@ -387,10 +373,40 @@
             {% endif %}
             {% if project.project_url or project.github_url %}
             <div class="description">
-                <br>
                 {% if project.project_url %}{{ t.projects.project_url_link }}: <a href="{{ project.project_url }}">{{ project.project_url }}</a>{% endif %}
                 {% if project.github_url %}{% if project.project_url %} | {% endif %}<a href="{{ project.github_url }}">{{ t.projects.github_repo }}</a>{% endif %}
             </div>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+    
+    <!-- Education -->
+    {% if education %}
+    <div class="section">
+        <h2>{{ t.education.title }}</h2>
+        {% for edu in education %}
+        <div class="entry">
+            <div class="entry-header">
+                <h3 class="entry-title">
+                    {{ edu.degree }}{% if edu.field_of_study %} - {{ edu.field_of_study }}{% endif %}
+                    <span class="entry-date">
+                        {% if edu.start_year %}&nbsp;({{ edu.start_year }} - {% endif %}{{ edu.end_year or t.education.in_progress }}{% if edu.start_year %}){% endif %}
+                    </span>
+                </h3>
+                <div class="entry-subtitle">
+                    {{ edu.institution_name }}{% if edu.location %}, {{ edu.location }}{% endif %}
+                </div>
+            </div>
+            {% if edu.gpa or edu.honors %}
+            <div class="description">
+                {% if edu.gpa %}<p><strong>{{ t.education.gpa }}:</strong> {{ edu.gpa }}</p>{% endif %}
+                {% if edu.honors %}<p><strong>{{ t.education.honors }}:</strong> {{ edu.honors }}</p>{% endif %}
+            </div>
+            {% endif %}
+            {% if edu.description %}
+            <div class="description">{{ edu.description|format_markdown|safe }}</div>
             {% endif %}
         </div>
         {% endfor %}

@@ -13,6 +13,9 @@
 
 <div class="page-header">
     <h2>{{ t.assignment_match.title }}</h2>
+    {% if current_user.is_admin() %}
+    <a href="{{ url_for('assignments') }}" class="btn btn-secondary">{{ t.assignment_match.manage_assignments_button }}</a>
+    {% endif %}
 </div>
 
 <div class="admin-container">
@@ -21,10 +24,32 @@
             <div class="form-section">
                 <h3>{{ t.assignment_match.input_title }}</h3>
 
+                {% if assignment_options %}
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="assignment_id">{{ t.assignment_match.assignment_select_label }}</label>
+                        <select id="assignment_id" name="assignment_id">
+                            <option value="">{{ t.assignment_match.assignment_select_placeholder }}</option>
+                            {% for option in assignment_options %}
+                            <option value="{{ option['id'] }}" {% if selected_assignment_id == option['id'] %}selected{% endif %}>
+                                #{{ option['id'] }} - {{ option['title'] or option['description'][:80] }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+                {% endif %}
+
                 <div class="form-row">
                     <div class="form-group">
                         <label for="assignment_description">{{ t.assignment_match.assignment_description_label }} *</label>
-                        <textarea id="assignment_description" name="assignment_description" required style="min-height: 180px;">{{ assignment_description or '' }}</textarea>
+                        <p
+                            class="field-hint"
+                            id="assignment_description_hint"
+                            data-default-text="{{ t.assignment_match.assignment_description_hint }}"
+                            data-selected-text="{{ t.assignment_match.assignment_description_hint_selected }}"
+                        >{{ t.assignment_match.assignment_description_hint }}</p>
+                        <textarea id="assignment_description" name="assignment_description" style="min-height: 180px;">{{ assignment_description or '' }}</textarea>
                     </div>
                 </div>
 
@@ -213,8 +238,8 @@
 
 .consultant-checklist {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-    gap: 0.5rem;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 0.3rem;
     margin-top: 0.5rem;
 }
 
@@ -236,13 +261,18 @@
 }
 
 .consultant-item {
-    display: flex;
+    display: inline-flex;
     align-items: center;
-    gap: 0.5rem;
-    padding: 0.5rem;
-    border: 1px solid var(--border-color);
-    border-radius: 6px;
-    background: var(--background);
+    gap: 0.35rem;
+    padding: 0.15rem 0;
+    border: none;
+    background: transparent;
+    font-size: 0.9rem;
+}
+
+.consultant-item input[type="checkbox"] {
+    width: auto;
+    margin: 0;
 }
 
 .selected-consultants,
@@ -333,6 +363,17 @@
     font-family: "Courier New", monospace;
     font-size: 0.875rem;
 }
+
+.field-hint {
+    margin: 0 0 0.4rem 0;
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+}
+
+#assignment_description.is-readonly {
+    opacity: 0.65;
+    cursor: not-allowed;
+}
 </style>
 
 <script>
@@ -365,6 +406,33 @@
         });
 
         syncSelectAllState();
+    }
+
+    const assignmentSelect = document.getElementById('assignment_id');
+    const assignmentDescription = document.getElementById('assignment_description');
+    const assignmentDescriptionHint = document.getElementById('assignment_description_hint');
+
+    const syncAssignmentDescriptionState = () => {
+        if (!assignmentSelect || !assignmentDescription) {
+            return;
+        }
+
+        const hasSelectedAssignment = Boolean((assignmentSelect.value || '').trim());
+        assignmentDescription.readOnly = hasSelectedAssignment;
+        assignmentDescription.classList.toggle('is-readonly', hasSelectedAssignment);
+
+        if (assignmentDescriptionHint) {
+            const defaultHint = assignmentDescriptionHint.dataset.defaultText || '';
+            const selectedHint = assignmentDescriptionHint.dataset.selectedText || defaultHint;
+            assignmentDescriptionHint.textContent = hasSelectedAssignment
+                ? selectedHint
+                : defaultHint;
+        }
+    };
+
+    if (assignmentSelect && assignmentDescription) {
+        assignmentSelect.addEventListener('change', syncAssignmentDescriptionState);
+        syncAssignmentDescriptionState();
     }
 </script>
 {% endblock %}

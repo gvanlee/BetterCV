@@ -52,6 +52,16 @@
             </div>
         </div>
         {% endif %}
+
+        {% if cert['skills'] %}
+        <br>
+        <h4>{{ t.work_experience.relevant_skills }}:</h4>
+        <div class="skills-list">
+            {% for skill in cert['skills'] %}
+            <span class="badge">{{ skill }}</span>
+            {% endfor %}
+        </div>
+        {% endif %}
     </div>
     {% endfor %}
 </div>

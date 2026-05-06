@@ -52,7 +52,8 @@ body {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 1rem 1rem;
+    gap: 1rem;
+    padding: 0.65rem 1rem;
 }
 
 .logo {
@@ -65,18 +66,82 @@ body {
     display: flex;
     align-items: center;
     list-style: none;
-    gap: 1.25rem;
+    gap: 0.55rem;
+    flex-wrap: wrap;
+    justify-content: flex-end;
 }
 
-.nav-menu a {
+.nav-menu a,
+.nav-dropdown summary {
     color: var(--text-secondary);
     text-decoration: none;
     font-weight: 500;
-    transition: color 0.2s;
+    font-size: 0.92rem;
+    line-height: 1.2;
+    padding: 0.35rem 0.55rem;
+    border-radius: 6px;
+    border: 1px solid transparent;
+    transition: color 0.2s, border-color 0.2s, background-color 0.2s;
 }
 
-.nav-menu a:hover {
+.nav-menu a:hover,
+.nav-dropdown summary:hover {
     color: var(--primary-color);
+    border-color: var(--border-color);
+    background-color: rgba(255, 255, 255, 0.03);
+}
+
+.nav-dropdown {
+    position: relative;
+}
+
+.nav-dropdown details {
+    position: relative;
+}
+
+.nav-dropdown summary {
+    list-style: none;
+    cursor: pointer;
+}
+
+.nav-dropdown summary::-webkit-details-marker {
+    display: none;
+}
+
+.nav-dropdown summary::after {
+    content: "\25BE";
+    font-size: 0.7rem;
+    margin-left: 0.35rem;
+}
+
+.nav-dropdown details[open] > summary {
+    color: var(--primary-color);
+    border-color: var(--border-color);
+    background-color: rgba(255, 255, 255, 0.03);
+}
+
+.nav-dropdown-menu {
+    position: absolute;
+    top: calc(100% + 0.35rem);
+    right: 0;
+    min-width: 220px;
+    list-style: none;
+    padding: 0.45rem;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    background-color: var(--card-background);
+    box-shadow: var(--shadow-lg);
+    z-index: 200;
+}
+
+.nav-dropdown-menu li {
+    width: 100%;
+}
+
+.nav-dropdown-menu a {
+    display: block;
+    width: 100%;
+    padding: 0.45rem 0.6rem;
 }
 
 .language-selector {
@@ -892,13 +957,20 @@ footer p {
 @media (max-width: 768px) {
     .navbar .container {
         flex-direction: column;
-        gap: 1rem;
+        gap: 0.65rem;
     }
 
     .nav-menu {
         flex-wrap: wrap;
         justify-content: center;
-        gap: 1rem;
+        gap: 0.5rem;
+    }
+
+    .nav-dropdown-menu {
+        left: 50%;
+        right: auto;
+        transform: translateX(-50%);
+        min-width: 200px;
     }
 
     .hero h1 {
