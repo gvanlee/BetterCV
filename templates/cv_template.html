@@ -267,12 +267,6 @@
                 {% if cert.credential_id %}
                 <div class="description"><strong>{{ t.certifications.credential_id }}:</strong> {{ cert.credential_id }}</div>
                 {% endif %}
-                {% if cert.credential_url %}
-                <div class="description"><a href="{{ cert.credential_url }}">{{ t.certifications.view_credential }}</a></div>
-                {% endif %}
-                {% if cert.skills %}
-                <div class="description"><i>{{ t.work_experience.relevant_skills }}: {{ cert.skills|join(', ') }}</i></div>
-                {% endif %}
                 {% if cert.description %}
                 <div class="description">{{ cert.description|format_markdown|safe }}</div>
                 {% endif %}

@@ -657,8 +657,20 @@ def consultants_management():
     conn = get_db_connection()
     consultants = get_consultants_with_completeness(conn)
     conn.close()
+
+    active_consultants = [
+        consultant for consultant in consultants
+        if consultant.get('actively_searching_for_assignment')
+    ]
+    inactive_consultants = [
+        consultant for consultant in consultants
+        if not consultant.get('actively_searching_for_assignment')
+    ]
+
     return render_template('consultants_management.html',
-                         all_consultants=consultants)
+                         all_consultants=consultants,
+                         active_consultants=active_consultants,
+                         inactive_consultants=inactive_consultants)
 
 
 @app.route('/admin/skill-categories/add', methods=['POST'])
@@ -789,6 +801,13 @@ def get_consultants_with_completeness(conn):
         SELECT
             c.id,
             c.display_name,
+            COALESCE((
+                SELECT pi.actively_searching_for_assignment
+                FROM personal_info pi
+                WHERE pi.consultant_id = c.id
+                ORDER BY pi.id DESC
+                LIMIT 1
+            ), 1) AS actively_searching_for_assignment,
             CASE WHEN EXISTS (SELECT 1 FROM personal_info pi WHERE pi.consultant_id = c.id) THEN 1 ELSE 0 END AS has_personal_info,
             CASE WHEN EXISTS (SELECT 1 FROM work_experience we WHERE we.consultant_id = c.id) THEN 1 ELSE 0 END AS has_work_experience,
             CASE WHEN EXISTS (SELECT 1 FROM education e WHERE e.consultant_id = c.id) THEN 1 ELSE 0 END AS has_education,
@@ -1893,8 +1912,8 @@ def import_consultant_data(conn, consultant_id, payload):
             INSERT INTO personal_info (
                 consultant_id, first_name, last_name, initials, email, phone, address, city,
                 state, zip_code, country, linkedin_url, github_url, portfolio_url,
-                professional_summary
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                professional_summary, actively_searching_for_assignment, available_from
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (
             consultant_id,
             personal_info.get('first_name', ''),
@@ -1910,7 +1929,9 @@ def import_consultant_data(conn, consultant_id, payload):
             personal_info.get('linkedin_url', ''),
             personal_info.get('github_url', ''),
             personal_info.get('portfolio_url', ''),
-            personal_info.get('professional_summary', personal_info.get('summary', ''))
+            personal_info.get('professional_summary', personal_info.get('summary', '')),
+            1 if normalize_assignment_bool(personal_info.get('actively_searching_for_assignment', True)) else 0,
+            normalize_iso_date(personal_info.get('available_from'))
         ))
 
     # Map skill categories and insert skills
@@ -2757,7 +2778,7 @@ def export_consultant(consultant_id):
 
 @app.route('/full-json-download')
 def full_json_download():
-    """Download anonymized JSON payload for all consultants (no auth required)."""
+    """Download anonymized JSON payload for consultants actively searching for assignment."""
     conn = get_db_connection()
     consultants = conn.execute(
         'SELECT id FROM consultants ORDER BY display_name, id'
@@ -2768,6 +2789,14 @@ def full_json_download():
         payload = build_consultant_ai_payload(conn, consultant['id'])
         if not payload:
             continue
+
+        personal_info = payload.get('personal_info') or {}
+        is_active_candidate = normalize_assignment_bool(
+            personal_info.get('actively_searching_for_assignment', True)
+        )
+        if not is_active_candidate:
+            continue
+
         anonymized_payloads.append(anonymize_consultant_payload_for_ai(payload))
 
     conn.close()
@@ -2809,6 +2838,8 @@ def edit_personal_info():
             'first_name': request.form['first_name'],
             'last_name': request.form['last_name'],
             'initials': request.form.get('initials', '').strip().upper(),
+            'actively_searching_for_assignment': bool(request.form.get('actively_searching_for_assignment')),
+            'available_from': normalize_iso_date(request.form.get('available_from')),
             'email': request.form['email'],
             'phone': request.form.get('phone', ''),
             'address': request.form.get('address', ''),
@@ -2832,12 +2863,14 @@ def edit_personal_info():
             # Update existing record
             conn.execute('''
                 UPDATE personal_info SET
-                    first_name = ?, last_name = ?, initials = ?, email = ?, phone = ?,
+                    first_name = ?, last_name = ?, initials = ?, actively_searching_for_assignment = ?, available_from = ?, email = ?, phone = ?,
                     address = ?, city = ?, state = ?, zip_code = ?, country = ?,
                     linkedin_url = ?, github_url = ?, portfolio_url = ?,
                     professional_summary = ?, updated_at = CURRENT_TIMESTAMP
                 WHERE id = ? AND consultant_id = ?
-            ''', (data['first_name'], data['last_name'], data['initials'], data['email'], data['phone'],
+            ''', (data['first_name'], data['last_name'], data['initials'],
+                  1 if data['actively_searching_for_assignment'] else 0, data['available_from'],
+                  data['email'], data['phone'],
                   data['address'], data['city'], data['state'], data['zip_code'], data['country'],
                   data['linkedin_url'], data['github_url'], data['portfolio_url'],
                   data['professional_summary'], existing['id'], consultant_id))
@@ -2846,12 +2879,16 @@ def edit_personal_info():
             # Insert new record
             conn.execute('''
                 INSERT INTO personal_info (
-                    consultant_id, first_name, last_name, initials, email, phone, address, city, state,
-                    zip_code, country, linkedin_url, github_url, portfolio_url, professional_summary
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    consultant_id, first_name, last_name, initials, actively_searching_for_assignment,
+                    available_from, email, phone, address, city, state, zip_code,
+                    country, linkedin_url, github_url, portfolio_url, professional_summary
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (
                 consultant_id,
-                data['first_name'], data['last_name'], data['initials'], data['email'], data['phone'],
+                data['first_name'], data['last_name'], data['initials'],
+                1 if data['actively_searching_for_assignment'] else 0,
+                data['available_from'],
+                data['email'], data['phone'],
                 data['address'], data['city'], data['state'], data['zip_code'], data['country'],
                 data['linkedin_url'], data['github_url'], data['portfolio_url'],
                 data['professional_summary']
@@ -3968,18 +4005,6 @@ def build_docx_cv(cv_data, avg_proof=False):
             credential_id = clean_text(cert.get('credential_id'))
             if credential_id:
                 doc.add_paragraph(f"{tr('certifications.credential_id')}: {credential_id}")
-
-            credential_url = clean_text(cert.get('credential_url'))
-            if credential_url:
-                doc.add_paragraph(f"{tr('certifications.view_credential')}: {credential_url}")
-
-            cert_skills = [clean_text(skill) for skill in (cert.get('skills') or [])]
-            cert_skills = [skill for skill in cert_skills if skill]
-            if cert_skills:
-                line = doc.add_paragraph()
-                line.paragraph_format.space_after = Pt(0)
-                line.add_run(f"{tr('work_experience.relevant_skills')}: ").bold = False
-                line.add_run(', '.join(cert_skills)).italic = True
 
             cert_desc = clean_text(cert.get('description'))
             if cert_desc:

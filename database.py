@@ -85,6 +85,8 @@ def init_database():
             first_name TEXT NOT NULL,
             last_name TEXT NOT NULL,
             initials TEXT,
+            actively_searching_for_assignment BOOLEAN NOT NULL DEFAULT 1,
+            available_from DATE,
             email TEXT NOT NULL,
             phone TEXT,
             address TEXT,
@@ -353,6 +355,8 @@ def init_database():
         ensure_column(table, 'consultant_id', 'INTEGER')
 
     ensure_column('personal_info', 'initials', 'TEXT')
+    ensure_column('personal_info', 'actively_searching_for_assignment', 'BOOLEAN NOT NULL DEFAULT 1')
+    ensure_column('personal_info', 'available_from', 'DATE')
 
     # Migration: ensure assignment columns exist for older databases
     ensure_column('assignments', 'title', "TEXT NOT NULL DEFAULT ''")

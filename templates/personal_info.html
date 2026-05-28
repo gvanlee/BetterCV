@@ -31,6 +31,20 @@
                 <span>{{ info['initials'] }}</span>
             </div>
             {% endif %}
+            <div class="info-item">
+                <label>{{ t.personal_info.actively_searching_for_assignment }}:</label>
+                <span>
+                    {% if info['actively_searching_for_assignment'] %}
+                        {{ t.personal_info.active_status_yes }}
+                    {% else %}
+                        {{ t.personal_info.active_status_no }}
+                    {% endif %}
+                </span>
+            </div>
+            <div class="info-item">
+                <label>{{ t.personal_info.available_from }}:</label>
+                <span>{{ info['available_from'] or t.common.na }}</span>
+            </div>
             <br>
             {% if info['address'] or info['city'] or info['state'] %}
                 <h3>{{ t.personal_info.address_section }}</h3>
